@@ -103,7 +103,6 @@ export function BusinessProfileProvider({ children }) {
         return statePayload;
       } catch (err) {
         console.error("Failed to save business profile to Firestore", err);
-        setProfileError("We could not save your business profile.");
         throw err;
       }
     },

@@ -1,0 +1,9 @@
+timestamp,orders,staff_count,note
+2026-05-01T08:00:00,9,2,"valid row, quoted note"
+bad timestamp,12,2,invalid timestamp should be skipped
+2026-05-01T09:00:00,not-a-number,3,invalid demand should be skipped
+2026-05-01T09:30:00,25,3,valid row
+2026-05-01T23:30:00,40,1,out of hours should be skipped
+2026-05-01T12:00:00,48,5,"valid lunch row, busy"
+2026-05-01T12:30:00,52,5,valid lunch row
+2026-05-01T15:00:00,18,3,valid afternoon row

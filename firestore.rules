@@ -25,6 +25,21 @@ service cloud.firestore {
       ]);
     }
 
+    function changesAllowedProfileKeysOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'businessType',
+        'roles',
+        'hours',
+        'busyLevel',
+        'peakStaff',
+        'csvDemand',
+        'dayConfigs',
+        'operatingRules',
+        'ownerUid',
+        'updatedAt'
+      ]);
+    }
+
     match /businessProfiles/{userId} {
       allow read: if isProfileOwner(userId);
       allow create: if isProfileOwner(userId)
@@ -33,7 +48,7 @@ service cloud.firestore {
       allow update: if isProfileOwner(userId)
         && (!('ownerUid' in resource.data) || resource.data.ownerUid == request.auth.uid)
         && request.resource.data.ownerUid == request.auth.uid
-        && hasAllowedProfileKeys();
+        && changesAllowedProfileKeysOnly();
       allow delete: if false;
     }
 
