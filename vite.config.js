@@ -12,7 +12,6 @@ export default defineConfig({
 
           if (id.includes('recharts')) return 'charts'
           if (id.includes('firebase') || id.includes('@firebase')) return 'firebase'
-          if (id.includes('react')) return 'react-vendor'
 
           return 'vendor'
         },
