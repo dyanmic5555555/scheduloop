@@ -1,5 +1,6 @@
 // src/App.jsx
 import "./App.css";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
 import { useAuth } from "./auth/AuthContext";
@@ -7,10 +8,10 @@ import { BusinessProfileProvider } from "./business/BusinessProfileProvider";
 import { useBusinessProfile } from "./business/BusinessProfileContext";
 import { ThemeProvider } from "./theme/ThemeProvider";
 
-import LoginPage from "./pages/LoginPage";
-import SignupPage from "./pages/SignupPage";
-import OnboardingPage from "./pages/OnboardingPage";
-import DashboardPage from "./pages/DashboardPage";
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const SignupPage = lazy(() => import("./pages/SignupPage"));
+const OnboardingPage = lazy(() => import("./pages/OnboardingPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 
 function RouteError({ message }) {
   return (
@@ -19,6 +20,14 @@ function RouteError({ message }) {
         <h1>Something went wrong</h1>
         <p>{message}</p>
       </div>
+    </div>
+  );
+}
+
+function RouteFallback() {
+  return (
+    <div className="app route-loading-screen" aria-label="Loading">
+      <div className="route-loading-spinner" />
     </div>
   );
 }
@@ -48,36 +57,38 @@ function CompleteProfileRoute({ children }) {
 
 function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
 
-      <Route
-        path="/onboarding"
-        element={
-          <ProtectedRoute>
-            <ProfileReadyRoute>
-              <OnboardingPage />
-            </ProfileReadyRoute>
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/onboarding"
+          element={
+            <ProtectedRoute>
+              <ProfileReadyRoute>
+                <OnboardingPage />
+              </ProfileReadyRoute>
+            </ProtectedRoute>
+          }
+        />
 
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <ProfileReadyRoute>
-              <CompleteProfileRoute>
-                <DashboardPage />
-              </CompleteProfileRoute>
-            </ProfileReadyRoute>
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <ProfileReadyRoute>
+                <CompleteProfileRoute>
+                  <DashboardPage />
+                </CompleteProfileRoute>
+              </ProfileReadyRoute>
+            </ProtectedRoute>
+          }
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

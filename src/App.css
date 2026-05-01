@@ -175,12 +175,33 @@ html, body, #root {
   justify-content: center;
 }
 
+.route-loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .route-error-card {
   width: min(100%, 460px);
   padding: 24px;
   border-radius: var(--radius-md);
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
+}
+
+.route-loading-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--accent);
+  animation: route-loading-spin 0.8s linear infinite;
+}
+
+@keyframes route-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .auth-switch {
