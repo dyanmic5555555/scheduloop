@@ -19,6 +19,7 @@ import {
   getWeekdayFromDateKey,
   holidayDateKey,
   HOURS,
+  parseLocalDateKey,
   toLocalDateKey,
 } from "../utils/schedule";
 import { assertCsvFileIsSafe, parseCsvDemand } from "../utils/csvDemand";
@@ -74,6 +75,120 @@ function getInitialRoles(profile) {
     return normalizeRolesForAccuracy(profile.roles);
   }
   return getBusinessPresetRoles(profile?.businessType || "gym");
+}
+
+function getBusinessTypeLabel(businessType) {
+  if (businessType === "gym") return "Gym / Fitness";
+  if (businessType === "cafe") return "Cafe / Restaurant";
+  return businessType;
+}
+
+function getDayTypeLabel(dayType) {
+  if (dayType === "quiet") return "Quiet day";
+  if (dayType === "busy") return "Busy day";
+  if (dayType === "event") return "Event day";
+  return "Normal day";
+}
+
+function getFriendlyConfidence(confidence) {
+  if (confidence.label === "Preset") {
+    return {
+      value: "Starter estimate",
+      detail: "Based on your business profile until you upload trading data.",
+    };
+  }
+
+  return {
+    value: confidence.label,
+    detail: confidence.detail,
+  };
+}
+
+function parseSelectedDateLabel(dateKey) {
+  return parseLocalDateKey(dateKey).toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function formatStaffHours(hours) {
+  const rounded = Math.round((Number(hours) || 0) * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+}
+
+function MetricIcon({ name }) {
+  const icons = {
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4l3 2" />
+      </>
+    ),
+    people: (
+      <>
+        <circle cx="9" cy="9" r="3" />
+        <circle cx="16" cy="10" r="2.5" />
+        <path d="M4 19c.7-3 2.4-5 5-5s4.3 2 5 5" />
+        <path d="M13.5 15.3c2 .4 3.2 1.8 3.8 3.7" />
+      </>
+    ),
+    trend: (
+      <>
+        <path d="M4 16l5-5 4 3 6-7" />
+        <path d="M15 7h4v4" />
+      </>
+    ),
+    shield: (
+      <>
+        <path d="M12 4l7 3v5c0 4-2.8 6.8-7 8-4.2-1.2-7-4-7-8V7l7-3z" />
+        <path d="M9 12l2 2 4-4" />
+      </>
+    ),
+    document: (
+      <>
+        <path d="M7 4h7l4 4v12H7z" />
+        <path d="M14 4v5h4" />
+        <path d="M9.5 13h5" />
+        <path d="M9.5 16h4" />
+      </>
+    ),
+  };
+
+  return (
+    <svg
+      className="planner-metric-icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+    >
+      {icons[name]}
+    </svg>
+  );
+}
+
+function PlannerMetricCard({
+  label,
+  value,
+  detail,
+  tone = "default",
+  icon,
+  featured = false,
+}) {
+  return (
+    <article
+      className={
+        `planner-metric-card planner-metric-${tone}` +
+        (featured ? " planner-metric-featured" : "")
+      }
+    >
+      <div className="planner-metric-topline">
+        <span className="planner-metric-label">{label}</span>
+        {icon && <MetricIcon name={icon} />}
+      </div>
+      <strong className="planner-metric-value">{value}</strong>
+      {detail && <p className="planner-metric-detail">{detail}</p>}
+    </article>
+  );
 }
 
 function DashboardPage() {
@@ -316,7 +431,7 @@ function DashboardPage() {
 
   const peakDemandSummary = useMemo(() => {
     if (!chartData || chartData.length === 0) {
-      return { title: "Peak Demand", value: "No data", detail: "" };
+      return { value: "No data", detail: "" };
     }
 
     const numericDemandUnits = chartData
@@ -329,11 +444,12 @@ function DashboardPage() {
       const isMoney = metric?.type === "money";
 
       return {
-        title: isMoney ? "Max Predicted Sales" : "Max Predicted Demand",
         value: isMoney
           ? `GBP ${Math.round(maxUnits).toLocaleString()}`
           : Math.round(maxUnits).toLocaleString(),
-        detail: metric?.column ? `From ${metric.column}` : "From uploaded data",
+        detail: metric?.column
+          ? `Highest forecast block from ${metric.column}.`
+          : "Highest forecast block from uploaded data.",
       };
     }
 
@@ -342,11 +458,21 @@ function DashboardPage() {
     );
 
     return {
-      title: "Max Demand Score",
       value: `${Math.round(maxDemandScore * 100)}%`,
-      detail: hasCsv ? "Blended with uploaded data" : "Pattern based",
+      detail: hasCsv
+        ? "Relative to the busiest uploaded pattern."
+        : "Relative to your business profile.",
     };
   }, [chartData, csvCurves, hasCsv]);
+
+  const friendlyConfidence = getFriendlyConfidence(demandConfidence);
+  const selectedDateLabel = parseSelectedDateLabel(selectedDate);
+  const staffHoursLabel = formatStaffHours(totalStaffHours);
+  const forecastBasis = hasCsv
+    ? `Uploaded ${csvCurves.rows.toLocaleString()} rows across ${
+        csvCurves.observedDays || "several"
+      } observed days.`
+    : "Based on your business profile and busiest-time role settings.";
 
   const handleDayConfigChange = (date, partialConfig) => {
     const nextConfigs = {
@@ -418,17 +544,10 @@ function DashboardPage() {
       <header className="app-header">
         <div>
           <h1>Scheduloop</h1>
-          <p className="subtitle">Shape your day. Staff smarter.</p>
+          <p className="subtitle">Today&apos;s staffing plan, built for the way your day changes.</p>
 
           <p className="business-type-label">
-            Profile for:{" "}
-            <strong>
-              {businessType === "gym"
-                ? "Gym / Fitness"
-                : businessType === "cafe"
-                  ? "Cafe / Restaurant"
-                  : businessType}
-            </strong>
+            Profile for: <strong>{getBusinessTypeLabel(businessType)}</strong>
           </p>
         </div>
 
@@ -452,14 +571,9 @@ function DashboardPage() {
             </button>
           </div>
           <div className="date-pill">
-            {selectedDate} / {hasCsv ? "Data-driven" : "Pattern-based"} /{" "}
-            {dayType === "normal"
-              ? "Normal day"
-              : dayType === "quiet"
-                ? "Quiet day"
-                : dayType === "busy"
-                  ? "Busy day"
-                  : "Event day"}
+            {selectedDate} /{" "}
+            {hasCsv ? "Based on uploaded data" : "Based on your business profile"} /{" "}
+            {getDayTypeLabel(dayType)}
           </div>
           <button
             type="button"
@@ -475,135 +589,185 @@ function DashboardPage() {
         </div>
       </header>
 
-      {dashboardError && <div className="banner banner-error">{dashboardError}</div>}
+      {dashboardError && (
+        <div className="banner banner-error">{dashboardError}</div>
+      )}
 
       {activeView === "planner" ? (
         <main className="planner-view">
-          <section className="planner-hero">
+          <section className="planner-heading">
+            <div>
+              <p className="section-kicker">Planner View</p>
+              <h2>Today&apos;s staffing plan</h2>
+              <p>
+                {selectedDateLabel} is set as a{" "}
+                {getDayTypeLabel(dayType).toLowerCase()}. Forecasts improve as
+                more history is added.
+              </p>
+            </div>
+          </section>
+
+          <section className="planner-recommendation-panel">
+            <div className="planner-recommendation-copy">
+              <span className="planner-recommendation-label">
+                Key recommendation
+              </span>
+              <h3>
+                Plan for {staffHoursLabel} staff hours today.
+              </h3>
+              <p>
+                Heaviest cover is expected around {peakHoursLabel}. Use this as
+                a rota starting point, then adjust for local context you know
+                about.
+              </p>
+            </div>
+            <div className="planner-recommendation-stats">
+              <div>
+                <span>Busiest period</span>
+                <strong>{peakHoursLabel}</strong>
+              </div>
+              <div>
+                <span>Confidence</span>
+                <strong>{friendlyConfidence.value}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="planner-metrics" aria-label="Staffing plan summary">
+            <PlannerMetricCard
+              label="Peak demand"
+              value={peakDemandSummary.value}
+              detail={peakDemandSummary.detail}
+              icon="trend"
+              tone="amber"
+            />
+            <PlannerMetricCard
+              label="Forecast confidence"
+              value={friendlyConfidence.value}
+              detail={friendlyConfidence.detail}
+              tone={friendlyConfidence.value === "High" ? "success" : "default"}
+              icon="shield"
+            />
+            <PlannerMetricCard
+              label="Forecast based on"
+              value={hasCsv ? "Uploaded data" : "Business profile"}
+              detail={forecastBasis}
+              icon="document"
+            />
+          </section>
+
+          <section className="planner-workspace">
             <div className="planner-chart">
               <ShapeOfDayChart roles={roles} data={chartData} />
             </div>
 
-            <div className="planner-summary">
-              <InfoCard title="Peak Hours">
-                <p>{peakHoursLabel}</p>
-              </InfoCard>
-
-              <InfoCard title="Staff Hours Needed">
-                <p className="big-number">{totalStaffHours.toFixed(1)}</p>
-              </InfoCard>
-
-              <InfoCard title={peakDemandSummary.title}>
-                <p className="big-number">{peakDemandSummary.value}</p>
-                {peakDemandSummary.detail && (
-                  <p className="upload-info">{peakDemandSummary.detail}</p>
-                )}
-              </InfoCard>
-
-              <InfoCard title="Demand Confidence">
-                <p className="big-number">{demandConfidence.label}</p>
-                <p className="upload-info">{demandConfidence.detail}</p>
-              </InfoCard>
-
-              <InfoCard title="Accuracy Check">
-                {backtestSummary ? (
-                  <p className="upload-info">
-                    Avg error {backtestSummary.meanAbsoluteError.toFixed(1)}{" "}
-                    staff / block. Under: {backtestSummary.underStaffedBlocks}.
-                    Over: {backtestSummary.overStaffedBlocks}.
-                  </p>
-                ) : (
-                  <p className="upload-info">No staffing history uploaded yet.</p>
-                )}
-              </InfoCard>
+            <div className="planner-calendar">
+              <CalendarPanel
+                selectedDate={selectedDate}
+                onSelectedDateChange={setSelectedDate}
+                dayConfigs={dayConfigs}
+                onDayConfigChange={handleDayConfigChange}
+              />
             </div>
-          </section>
-
-          <section className="planner-calendar">
-            <CalendarPanel
-              selectedDate={selectedDate}
-              onSelectedDateChange={setSelectedDate}
-              dayConfigs={dayConfigs}
-              onDayConfigChange={handleDayConfigChange}
-            />
           </section>
         </main>
       ) : (
         <main className="setup-view">
-          <section className="setup-left">
-            <InfoCard title="Business Profile">
-              <label className="setup-field">
-                Business type
-                <select
-                  value={businessType}
-                  onChange={handleBusinessTypeChange}
-                  className="business-select setup-select"
-                >
-                  <option value="gym">Gym / Fitness</option>
-                  <option value="cafe">Cafe / Restaurant</option>
-                </select>
-              </label>
-              <p className="upload-info">
-                Opening hours: {openingHours.open} - {openingHours.close}
-              </p>
-            </InfoCard>
-
-            <InfoCard title="Upload CSV data">
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleCsvChange}
-                className="csv-input"
-              />
-              {uploadError && <p className="upload-error">{uploadError}</p>}
-              {uploadInfo && !uploadError && (
-                <p className="upload-info">
-                  Loaded <strong>{uploadInfo.rows}</strong> rows
-                  {uploadInfo.skippedRows > 0
-                    ? `; skipped ${uploadInfo.skippedRows} invalid or out-of-hours rows`
-                    : ""}
-                  . Metric: {uploadInfo.demandMetric?.column || "row count"}.
-                  {uploadInfo.observedDays
-                    ? ` Observed days: ${uploadInfo.observedDays}.`
-                    : ""}
-                  {uploadInfo.actualStaffRows > 0
-                    ? ` Actual staffing rows: ${uploadInfo.actualStaffRows}.`
-                    : ""}
-                  {uploadInfo.intervalMinutes !== operatingRules.intervalMinutes
-                    ? " Re-upload after changing block size."
-                    : ""}
-                </p>
-              )}
-              {!uploadInfo && !uploadError && (
-                <p className="upload-info">
-                  CSV needs a time, timestamp, date, or datetime column.
-                </p>
-              )}
-            </InfoCard>
-
-            <InfoCard title="Accuracy Check">
-              {backtestSummary ? (
-                <p className="upload-info">
-                  Avg error {backtestSummary.meanAbsoluteError.toFixed(1)} staff
-                  / block. Under: {backtestSummary.underStaffedBlocks}. Over:{" "}
-                  {backtestSummary.overStaffedBlocks}.
-                </p>
-              ) : (
-                <p className="upload-info">Upload a CSV with staff counts.</p>
-              )}
-            </InfoCard>
+          <section className="setup-heading">
+            <p className="section-kicker">Setup View</p>
+            <h2>Business setup</h2>
+            <p>
+              Keep the profile, data upload, and role assumptions up to date so
+              the planner stays useful.
+            </p>
           </section>
 
-          <section className="setup-right">
-            <AccuracySettingsPanel
-              operatingRules={operatingRules}
-              onOperatingRulesChange={handleOperatingRulesChange}
-            />
-            <StaffBreakdownPanel
-              roles={roles}
-              peakStaff={peakStaff}
-              onStaffingChange={handleStaffingChange}
-            />
+          <section className="setup-layout">
+            <div className="setup-left">
+              <InfoCard
+                title="Business profile"
+                subtitle="These basics decide the starter forecast before you upload data."
+                className="setup-card"
+              >
+                <label className="setup-field">
+                  Business type
+                  <select
+                    value={businessType}
+                    onChange={handleBusinessTypeChange}
+                    className="business-select setup-select"
+                  >
+                    <option value="gym">Gym / Fitness</option>
+                    <option value="cafe">Cafe / Restaurant</option>
+                  </select>
+                </label>
+                <p className="upload-info">
+                  Opening hours: {openingHours.open} - {openingHours.close}
+                </p>
+              </InfoCard>
+
+              <InfoCard
+                title="Data upload"
+                subtitle="Upload trading data to replace the starter estimate with your real pattern."
+                className="setup-card"
+              >
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCsvChange}
+                  className="csv-input"
+                />
+                {uploadError && <p className="upload-error">{uploadError}</p>}
+                {uploadInfo && !uploadError && (
+                  <p className="upload-info">
+                    Loaded <strong>{uploadInfo.rows}</strong> rows
+                    {uploadInfo.skippedRows > 0
+                      ? `; skipped ${uploadInfo.skippedRows} invalid or out-of-hours rows`
+                      : ""}
+                    . Metric: {uploadInfo.demandMetric?.column || "row count"}.
+                    {uploadInfo.observedDays
+                      ? ` Observed days: ${uploadInfo.observedDays}.`
+                      : ""}
+                    {uploadInfo.actualStaffRows > 0
+                      ? ` Actual staffing rows: ${uploadInfo.actualStaffRows}.`
+                      : ""}
+                    {uploadInfo.intervalMinutes !==
+                    operatingRules.intervalMinutes
+                      ? " Re-upload after changing block size."
+                      : ""}
+                  </p>
+                )}
+                {!uploadInfo && !uploadError && (
+                  <p className="upload-info">
+                    Upload trading data later to replace this starter estimate.
+                    CSV needs a time, timestamp, date, or datetime column.
+                  </p>
+                )}
+
+                <div className="setup-inline-status">
+                  <span>Staffing history check</span>
+                  <p>
+                    {backtestSummary
+                      ? `Average difference: ${backtestSummary.meanAbsoluteError.toFixed(
+                          1
+                        )} staff per block.`
+                      : "Upload staff counts to compare the forecast with past rotas."}
+                  </p>
+                </div>
+              </InfoCard>
+
+              <AccuracySettingsPanel
+                operatingRules={operatingRules}
+                onOperatingRulesChange={handleOperatingRulesChange}
+              />
+            </div>
+
+            <div className="setup-right">
+              <StaffBreakdownPanel
+                roles={roles}
+                peakStaff={peakStaff}
+                onStaffingChange={handleStaffingChange}
+              />
+            </div>
           </section>
         </main>
       )}

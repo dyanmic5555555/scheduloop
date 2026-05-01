@@ -82,22 +82,36 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
     <div className="card staff-panel">
       <h2 className="card-title">Staff breakdown</h2>
       <p className="card-subtitle">
-        Adjust your roles and how many of each you need at your busiest hour.
+        Tell Scheduloop which roles you need and how many people you usually
+        need at your busiest time.
       </p>
 
       <div className="staff-role-list">
         {roles.map((role) => (
           <div key={role.id} className="staff-role-row">
-            <div className="staff-role-main">
-              <span
-                className="staff-role-color-dot"
-                style={{ backgroundColor: role.color }}
-              />
-              <input
-                className="staff-role-name-input"
-                value={role.name}
-                onChange={(e) => handleRoleNameChange(role.id, e.target.value)}
-              />
+            <div className="staff-role-card-header">
+              <div className="staff-role-main">
+                <span
+                  className="staff-role-color-dot"
+                  style={{ backgroundColor: role.color }}
+                />
+                <input
+                  className="staff-role-name-input"
+                  value={role.name}
+                  onChange={(e) =>
+                    handleRoleNameChange(role.id, e.target.value)
+                  }
+                />
+              </div>
+
+              <button
+                type="button"
+                className="staff-role-remove"
+                onClick={() => handleRemoveRole(role.id)}
+                aria-label={`Remove ${role.name}`}
+              >
+                x
+              </button>
             </div>
 
             <div className="staff-role-controls">
@@ -109,6 +123,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                     min="0"
                     step="1"
                     className="staff-role-peak-input"
+                    placeholder="0"
                     value={peakStaff?.[role.id] ?? 0}
                     onChange={(e) =>
                       handleRolePeakChange(role.id, e.target.value)
@@ -124,6 +139,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                   min="0"
                   step="1"
                   className="staff-role-peak-input"
+                  placeholder="20"
                   value={role.serviceRate ?? 0}
                   onChange={(e) =>
                     handleRoleAccuracyChange(role.id, {
@@ -140,6 +156,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                   min="0"
                   step="1"
                   className="staff-role-peak-input"
+                  placeholder="0"
                   value={role.minStaff ?? 0}
                   onChange={(e) =>
                     handleRoleAccuracyChange(role.id, {
@@ -156,6 +173,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                   min="0"
                   step="5"
                   className="staff-role-peak-input"
+                  placeholder="100"
                   value={Math.round((role.demandWeight ?? 1) * 100)}
                   onChange={(e) =>
                     handleRoleAccuracyChange(role.id, {
@@ -196,13 +214,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                 ))}
               </div>
 
-              <button
-                type="button"
-                className="staff-role-remove"
-                onClick={() => handleRemoveRole(role.id)}
-              >
-                x
-              </button>
+              <div className="staff-role-control-note">Busiest time setup</div>
             </div>
           </div>
         ))}

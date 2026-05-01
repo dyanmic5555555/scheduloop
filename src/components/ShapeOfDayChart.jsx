@@ -51,7 +51,6 @@ const ShapeOfDayTooltip = ({ active, payload, label, roles }) => {
 };
 
 function ShapeOfDayChart({ roles, data }) {
-  // Consistent colours for roles
   const roleColours = useMemo(() => {
     const fallbackColours = ["#3bd68b", "#ff776f", "#facc15", "#a855f7"];
     const map = {};
@@ -63,7 +62,32 @@ function ShapeOfDayChart({ roles, data }) {
 
   return (
     <div className="card big-card shape-card">
-      <h2 className="card-title">Shape of the Day</h2>
+      <div className="shape-card-header">
+        <div>
+          <h2 className="card-title">Shape of the day</h2>
+          <p className="shape-card-subtitle">
+            Staffing need across the day. The blue line is total people needed;
+            role lines show where each team is busiest.
+          </p>
+        </div>
+        <div className="shape-chart-badge">Staffing need</div>
+      </div>
+
+      <div className="shape-legend" aria-label="Chart legend">
+        <div className="shape-legend-item">
+          <span className="shape-legend-line shape-legend-total" />
+          Total staff
+        </div>
+        {roles.map((role) => (
+          <div key={role.id} className="shape-legend-item">
+            <span
+              className="shape-legend-dot"
+              style={{ backgroundColor: roleColours[role.id] }}
+            />
+            {role.name}
+          </div>
+        ))}
+      </div>
       <div className="chart-wrapper">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 10, left: 0, right: 0 }}>
@@ -117,6 +141,9 @@ function ShapeOfDayChart({ roles, data }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+      <p className="shape-chart-note">
+        Use this curve to spot when to schedule more people.
+      </p>
     </div>
   );
 }

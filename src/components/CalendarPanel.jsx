@@ -2,10 +2,10 @@ import { useMemo, useState } from "react";
 import { parseLocalDateKey, toLocalDateKey } from "../utils/schedule";
 
 const DAY_TYPE_OPTIONS = [
-  { value: "quiet", label: "Quiet" },
-  { value: "normal", label: "Normal" },
-  { value: "busy", label: "Busy" },
-  { value: "event", label: "Event day" },
+  { value: "quiet", label: "Quiet", helper: "Lower than usual" },
+  { value: "normal", label: "Normal", helper: "Typical day" },
+  { value: "busy", label: "Busy", helper: "Higher demand" },
+  { value: "event", label: "Event day", helper: "Special spike" },
 ];
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -64,6 +64,7 @@ function CalendarPanel({
   };
 
   const selectedConfig = dayConfigs[selectedDate] || {};
+  const selectedDayType = selectedConfig.dayType || "normal";
 
   const getDayTypeLabel = (dayType) => {
     const option = DAY_TYPE_OPTIONS.find((item) => item.value === dayType);
@@ -72,6 +73,15 @@ function CalendarPanel({
 
   return (
     <div className="card calendar-panel">
+      <div className="calendar-title-row">
+        <div>
+          <h2 className="card-title">Plan by day</h2>
+          <p className="calendar-helper">
+            Adjust day types when you expect unusual demand.
+          </p>
+        </div>
+      </div>
+
       <div className="calendar-header">
         <button
           type="button"
@@ -123,6 +133,7 @@ function CalendarPanel({
                 (dayType ? ` calendar-day-${dayType}` : "")
               }
               onClick={() => handleDayClick(dateObj)}
+              aria-label={`${iso}${dayType ? `, ${getDayTypeLabel(dayType)}` : ""}`}
             >
               <span className="calendar-day-number">{dayNum}</span>
               {dayType && (
@@ -149,7 +160,7 @@ function CalendarPanel({
             })}
           </div>
           <div className="calendar-detail-sub">
-            Configure how this specific day behaves.
+            Choose how busy this day should be compared with a normal day.
           </div>
         </div>
 
@@ -160,20 +171,22 @@ function CalendarPanel({
               type="button"
               className={
                 "daytype-pill" +
-                (selectedConfig.dayType === option.value ? " active" : "")
+                (selectedDayType === option.value ? " active" : "")
               }
               onClick={() =>
                 onDayConfigChange(selectedDate, { dayType: option.value })
               }
             >
-              {option.label}
+              <span className={`daytype-dot daytype-dot-${option.value}`} />
+              <span>{option.label}</span>
+              <small>{option.helper}</small>
             </button>
           ))}
         </div>
 
         <textarea
           className="calendar-note-input"
-          placeholder="Add a note"
+          placeholder="Add a note, e.g. local event, school holiday, private booking"
           value={selectedConfig.note || ""}
           onChange={(e) =>
             onDayConfigChange(selectedDate, { note: e.target.value })

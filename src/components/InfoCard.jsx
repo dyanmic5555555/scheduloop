@@ -1,9 +1,13 @@
-function InfoCard( { title, children}){
-    return (
-        <div className = "card">
-            <h2> {title} </h2>
-            <div> {children}</div>
-        </div>
-    );
+function InfoCard({ title, subtitle, className = "", children }) {
+  return (
+    <div className={`card info-card${className ? ` ${className}` : ""}`}>
+      <div className="info-card-header">
+        <h2>{title}</h2>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+      <div className="info-card-body">{children}</div>
+    </div>
+  );
 }
+
 export default InfoCard;
