@@ -27,7 +27,11 @@ import {
   calculateBacktestSummary,
   calculateRoleStaff,
 } from "../utils/staffing";
-import { getCsvBlendWeight, getDemandConfidence } from "../utils/demandModel";
+import {
+  getCsvBlendWeight,
+  getDemandConfidence,
+  isCurrentCsvDemandModel,
+} from "../utils/demandModel";
 
 const DAY_TYPE_SCALE = {
   quiet: 0.8,
@@ -76,6 +80,10 @@ function DashboardPage() {
   const { logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { profile, saveProfile, saveCsvDemand } = useBusinessProfile();
+  const storedCsvDemand = isCurrentCsvDemandModel(profile?.csvDemand)
+    ? profile.csvDemand
+    : null;
+  const hasOutdatedCsvDemand = Boolean(profile?.csvDemand && !storedCsvDemand);
 
   const [businessType, setBusinessType] = useState(
     profile?.businessType || "gym"
@@ -96,10 +104,14 @@ function DashboardPage() {
   const [dayConfigs, setDayConfigs] = useState(() =>
     profile?.dayConfigs || buildInitialDayConfigs()
   );
-  const [csvCurves, setCsvCurves] = useState(profile?.csvDemand || null);
-  const [uploadError, setUploadError] = useState("");
+  const [csvCurves, setCsvCurves] = useState(storedCsvDemand);
+  const [uploadError, setUploadError] = useState(() =>
+    hasOutdatedCsvDemand
+      ? "Re-upload your CSV so the improved demand model can rebuild this profile."
+      : ""
+  );
   const [uploadInfo, setUploadInfo] = useState(() =>
-    profile?.csvDemand ? { ...profile.csvDemand } : null
+    storedCsvDemand ? { ...storedCsvDemand } : null
   );
   const [dashboardError, setDashboardError] = useState("");
   const [activeView, setActiveView] = useState("planner");

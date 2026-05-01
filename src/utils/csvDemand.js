@@ -5,6 +5,7 @@ import {
   normalizeIntervalMinutes,
   toLocalDateKey,
 } from "./schedule.js";
+import { CSV_DEMAND_MODEL_VERSION } from "./demandModel.js";
 
 export const MAX_CSV_BYTES = 1024 * 1024;
 
@@ -344,6 +345,7 @@ export function parseCsvDemand(
   );
 
   return {
+    modelVersion: CSV_DEMAND_MODEL_VERSION,
     slotLabels,
     intervalMinutes: interval,
     fallback: normalizeCounts(fallbackUnits),

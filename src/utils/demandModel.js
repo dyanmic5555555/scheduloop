@@ -1,3 +1,9 @@
+export const CSV_DEMAND_MODEL_VERSION = 2;
+
+export function isCurrentCsvDemandModel(csvDemand) {
+  return csvDemand?.modelVersion === CSV_DEMAND_MODEL_VERSION;
+}
+
 export function getCsvBlendWeight({
   hasCsv,
   hasWeekdayData,

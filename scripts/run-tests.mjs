@@ -16,8 +16,10 @@ import {
   normalizeStaffCount,
 } from "../src/utils/staffing.js";
 import {
+  CSV_DEMAND_MODEL_VERSION,
   getCsvBlendWeight,
   getDemandConfidence,
+  isCurrentCsvDemandModel,
 } from "../src/utils/demandModel.js";
 
 const tests = [];
@@ -146,11 +148,20 @@ test("CSV demand averages units by observed business day", () => {
   });
 
   assert.equal(demand.observedDays, 2);
+  assert.equal(demand.modelVersion, CSV_DEMAND_MODEL_VERSION);
   assert.equal(demand.weekdaySampleCounts[5], 2);
   assert.equal(demand.fallbackUnits[0], 15);
   assert.equal(demand.byWeekdayUnits[5][0], 15);
   assert.equal(demand.actualStaffFallback[0], 4.5);
   assert.equal(demand.actualStaffByWeekday[5][0], 4.5);
+});
+
+test("stale CSV demand models are rejected", () => {
+  assert.equal(isCurrentCsvDemandModel({ rows: 10 }), false);
+  assert.equal(
+    isCurrentCsvDemandModel({ rows: 10, modelVersion: CSV_DEMAND_MODEL_VERSION }),
+    true
+  );
 });
 
 test("CSV demand rejects files without timestamp columns", () => {
