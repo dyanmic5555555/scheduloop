@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isProfileOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function hasAllowedProfileKeys() {
+      return request.resource.data.keys().hasOnly([
+        'businessType',
+        'roles',
+        'hours',
+        'busyLevel',
+        'peakStaff',
+        'csvDemand',
+        'dayConfigs',
+        'operatingRules',
+        'ownerUid',
+        'updatedAt'
+      ]);
+    }
+
+    match /businessProfiles/{userId} {
+      allow read: if isProfileOwner(userId);
+      allow create: if isProfileOwner(userId)
+        && request.resource.data.ownerUid == request.auth.uid
+        && hasAllowedProfileKeys();
+      allow update: if isProfileOwner(userId)
+        && (!('ownerUid' in resource.data) || resource.data.ownerUid == request.auth.uid)
+        && request.resource.data.ownerUid == request.auth.uid
+        && hasAllowedProfileKeys();
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
