@@ -228,6 +228,10 @@ function averageActualStaffByObservedSlot(buckets, slotCount) {
   });
 }
 
+function toWeekdayMap(values) {
+  return Object.fromEntries(values.map((value, weekday) => [weekday, value]));
+}
+
 export function parseCsvDemand(
   text,
   {
@@ -343,22 +347,24 @@ export function parseCsvDemand(
   const byWeekdayUnits = weekdayBuckets.map((buckets) =>
     averageDemandByObservedDay(buckets, slotLabels.length)
   );
+  const byWeekday = byWeekdayUnits.map(normalizeCounts);
+  const actualStaffByWeekday = weekdayBuckets.map((buckets) =>
+    averageActualStaffByObservedSlot(buckets, slotLabels.length)
+  );
 
   return {
     modelVersion: CSV_DEMAND_MODEL_VERSION,
     slotLabels,
     intervalMinutes: interval,
     fallback: normalizeCounts(fallbackUnits),
-    byWeekday: byWeekdayUnits.map(normalizeCounts),
+    byWeekday: toWeekdayMap(byWeekday),
     fallbackUnits,
-    byWeekdayUnits,
+    byWeekdayUnits: toWeekdayMap(byWeekdayUnits),
     actualStaffFallback: averageActualStaffByObservedSlot(
       dateBuckets,
       slotLabels.length
     ),
-    actualStaffByWeekday: weekdayBuckets.map((buckets) =>
-      averageActualStaffByObservedSlot(buckets, slotLabels.length)
-    ),
+    actualStaffByWeekday: toWeekdayMap(actualStaffByWeekday),
     demandMetric,
     rows: matchedRows,
     totalRows: rows.length - 1,

@@ -28,6 +28,18 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
+function hasUnsupportedNestedArray(value) {
+  if (!value || typeof value !== "object") return false;
+
+  if (Array.isArray(value)) {
+    return value.some(
+      (item) => Array.isArray(item) || hasUnsupportedNestedArray(item)
+    );
+  }
+
+  return Object.values(value).some(hasUnsupportedNestedArray);
+}
+
 test("opening hours must close after they open", () => {
   assert.equal(
     isOpeningHoursValid({ open: "09:00", close: "17:00" }),
@@ -149,11 +161,28 @@ test("CSV demand averages units by observed business day", () => {
 
   assert.equal(demand.observedDays, 2);
   assert.equal(demand.modelVersion, CSV_DEMAND_MODEL_VERSION);
+  assert.equal(Array.isArray(demand.byWeekday), false);
   assert.equal(demand.weekdaySampleCounts[5], 2);
   assert.equal(demand.fallbackUnits[0], 15);
   assert.equal(demand.byWeekdayUnits[5][0], 15);
   assert.equal(demand.actualStaffFallback[0], 4.5);
   assert.equal(demand.actualStaffByWeekday[5][0], 4.5);
+});
+
+test("CSV demand model is safe to store in Firestore", () => {
+  const csv = [
+    "timestamp,orders,staff_count",
+    "2026-01-02T09:00:00,10,2",
+    "2026-01-09T09:00:00,20,3",
+  ].join("\n");
+
+  const demand = parseCsvDemand(csv, {
+    openingHours: { open: "09:00", close: "09:30" },
+    intervalMinutes: 30,
+    now: () => new Date("2026-01-10T12:00:00Z"),
+  });
+
+  assert.equal(hasUnsupportedNestedArray(demand), false);
 });
 
 test("stale CSV demand models are rejected", () => {
