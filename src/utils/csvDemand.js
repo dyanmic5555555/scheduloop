@@ -3,6 +3,7 @@ import {
   generateTimeSlots,
   HOURS,
   normalizeIntervalMinutes,
+  toLocalDateKey,
 } from "./schedule.js";
 
 export const MAX_CSV_BYTES = 1024 * 1024;
@@ -177,10 +178,53 @@ function normalizeCounts(counts) {
   return counts.map((count) => count / max);
 }
 
-function buildActualAverages(sumRows, countRows) {
-  return sumRows.map((sum, index) =>
-    countRows[index] > 0 ? sum / countRows[index] : null
+function createDateBucket(date, slotCount) {
+  return {
+    weekday: date.getDay(),
+    demandUnits: Array(slotCount).fill(0),
+    actualStaffSums: Array(slotCount).fill(0),
+    actualStaffCounts: Array(slotCount).fill(0),
+  };
+}
+
+function sumBucketsBySlot(buckets, slotCount) {
+  const totals = Array(slotCount).fill(0);
+
+  buckets.forEach((bucket) => {
+    bucket.demandUnits.forEach((value, index) => {
+      totals[index] += value;
+    });
+  });
+
+  return totals;
+}
+
+function averageDemandByObservedDay(buckets, slotCount) {
+  if (buckets.length === 0) return Array(slotCount).fill(0);
+
+  return sumBucketsBySlot(buckets, slotCount).map(
+    (value) => value / buckets.length
   );
+}
+
+function averageActualStaffByObservedSlot(buckets, slotCount) {
+  return Array.from({ length: slotCount }, (_, slotIndex) => {
+    const observedStaff = buckets
+      .map((bucket) =>
+        bucket.actualStaffCounts[slotIndex] > 0
+          ? bucket.actualStaffSums[slotIndex] /
+            bucket.actualStaffCounts[slotIndex]
+          : null
+      )
+      .filter((value) => value !== null);
+
+    if (observedStaff.length === 0) return null;
+
+    return (
+      observedStaff.reduce((sum, value) => sum + value, 0) /
+      observedStaff.length
+    );
+  });
 }
 
 export function parseCsvDemand(
@@ -222,18 +266,7 @@ export function parseCsvDemand(
 
   const demandMetric = findDemandMetric(headers);
   const actualStaffIdx = findActualStaffColumn(headers);
-  const demandUnitsOverall = Array(slotLabels.length).fill(0);
-  const weekdayDemandUnits = Array.from({ length: 7 }, () =>
-    Array(slotLabels.length).fill(0)
-  );
-  const actualStaffOverallSums = Array(slotLabels.length).fill(0);
-  const actualStaffOverallCounts = Array(slotLabels.length).fill(0);
-  const weekdayActualStaffSums = Array.from({ length: 7 }, () =>
-    Array(slotLabels.length).fill(0)
-  );
-  const weekdayActualStaffCounts = Array.from({ length: 7 }, () =>
-    Array(slotLabels.length).fill(0)
-  );
+  const dateBucketsByKey = new Map();
 
   const invalidRows = [];
   let matchedRows = 0;
@@ -273,18 +306,20 @@ export function parseCsvDemand(
       continue;
     }
 
-    const weekday = parsed.getDay();
-    demandUnitsOverall[slotIndex] += demandUnits;
-    weekdayDemandUnits[weekday][slotIndex] += demandUnits;
+    const dateKey = toLocalDateKey(parsed);
+    const bucket =
+      dateBucketsByKey.get(dateKey) ||
+      createDateBucket(parsed, slotLabels.length);
+
+    dateBucketsByKey.set(dateKey, bucket);
+    bucket.demandUnits[slotIndex] += demandUnits;
     matchedRows += 1;
 
     if (actualStaffIdx !== -1 && cols.length > actualStaffIdx) {
       const actualStaff = parsePositiveNumber(cols[actualStaffIdx]);
       if (actualStaff) {
-        actualStaffOverallSums[slotIndex] += actualStaff;
-        actualStaffOverallCounts[slotIndex] += 1;
-        weekdayActualStaffSums[weekday][slotIndex] += actualStaff;
-        weekdayActualStaffCounts[weekday][slotIndex] += 1;
+        bucket.actualStaffSums[slotIndex] += actualStaff;
+        bucket.actualStaffCounts[slotIndex] += 1;
         actualStaffRows += 1;
       }
     }
@@ -296,19 +331,31 @@ export function parseCsvDemand(
     );
   }
 
+  const dateBuckets = Array.from(dateBucketsByKey.values());
+  const weekdayBuckets = Array.from({ length: 7 }, (_, weekday) =>
+    dateBuckets.filter((bucket) => bucket.weekday === weekday)
+  );
+  const fallbackUnits = averageDemandByObservedDay(
+    dateBuckets,
+    slotLabels.length
+  );
+  const byWeekdayUnits = weekdayBuckets.map((buckets) =>
+    averageDemandByObservedDay(buckets, slotLabels.length)
+  );
+
   return {
     slotLabels,
     intervalMinutes: interval,
-    fallback: normalizeCounts(demandUnitsOverall),
-    byWeekday: weekdayDemandUnits.map(normalizeCounts),
-    fallbackUnits: demandUnitsOverall,
-    byWeekdayUnits: weekdayDemandUnits,
-    actualStaffFallback: buildActualAverages(
-      actualStaffOverallSums,
-      actualStaffOverallCounts
+    fallback: normalizeCounts(fallbackUnits),
+    byWeekday: byWeekdayUnits.map(normalizeCounts),
+    fallbackUnits,
+    byWeekdayUnits,
+    actualStaffFallback: averageActualStaffByObservedSlot(
+      dateBuckets,
+      slotLabels.length
     ),
-    actualStaffByWeekday: weekdayActualStaffSums.map((sums, weekday) =>
-      buildActualAverages(sums, weekdayActualStaffCounts[weekday])
+    actualStaffByWeekday: weekdayBuckets.map((buckets) =>
+      averageActualStaffByObservedSlot(buckets, slotLabels.length)
     ),
     demandMetric,
     rows: matchedRows,
@@ -317,6 +364,8 @@ export function parseCsvDemand(
     invalidRows: invalidRows.slice(0, 5),
     outOfHoursRows,
     actualStaffRows,
+    observedDays: dateBuckets.length,
+    weekdaySampleCounts: weekdayBuckets.map((buckets) => buckets.length),
     lastUpdated: now().toISOString(),
   };
 }

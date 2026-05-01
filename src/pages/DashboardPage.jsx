@@ -27,6 +27,7 @@ import {
   calculateBacktestSummary,
   calculateRoleStaff,
 } from "../utils/staffing";
+import { getCsvBlendWeight, getDemandConfidence } from "../utils/demandModel";
 
 const DAY_TYPE_SCALE = {
   quiet: 0.8,
@@ -188,6 +189,9 @@ function DashboardPage() {
 
   const chartData = useMemo(() => {
     const selectedWeekday = getWeekdayFromDateKey(selectedDate);
+    const weekdaySampleCount =
+      csvCurves?.weekdaySampleCounts?.[selectedWeekday] || 0;
+    const observedDays = csvCurves?.observedDays || 0;
     const { slotLabels, intervalMinutes } = getActiveSlotWindow(
       openingHours,
       operatingRules
@@ -201,7 +205,15 @@ function DashboardPage() {
       const weekdayCurve = csvCurves?.byWeekday?.[selectedWeekday] || null;
       const weekdayUnits = csvCurves?.byWeekdayUnits?.[selectedWeekday] || null;
       const hasWeekdayData =
-        weekdayCurve && weekdayCurve.some((value) => (value || 0) > 0);
+        weekdaySampleCount > 0 &&
+        weekdayCurve &&
+        weekdayCurve.some((value) => (value || 0) > 0);
+      const csvWeight = getCsvBlendWeight({
+        hasCsv,
+        hasWeekdayData,
+        weekdaySampleCount,
+        observedDays,
+      });
       const csvDemand =
         hasCsv && csvSlotIndex !== -1
           ? (hasWeekdayData
@@ -216,8 +228,7 @@ function DashboardPage() {
           : null;
       const baseDemand =
         csvDemand !== null
-          ? (hasWeekdayData ? 0.7 : 0.4) * csvDemand +
-            (hasWeekdayData ? 0.3 : 0.6) * preset
+          ? csvWeight * csvDemand + (1 - csvWeight) * preset
           : preset;
       const demand = Math.min(
         Math.max(baseDemand * busyScale * dayScale, 0),
@@ -282,6 +293,10 @@ function DashboardPage() {
   );
 
   const selectedWeekday = getWeekdayFromDateKey(selectedDate);
+  const demandConfidence = useMemo(
+    () => getDemandConfidence(csvCurves, selectedWeekday),
+    [csvCurves, selectedWeekday]
+  );
   const backtestSummary = useMemo(
     () => calculateBacktestSummary(chartData, csvCurves, selectedWeekday),
     [chartData, csvCurves, selectedWeekday]
@@ -473,6 +488,11 @@ function DashboardPage() {
                 )}
               </InfoCard>
 
+              <InfoCard title="Demand Confidence">
+                <p className="big-number">{demandConfidence.label}</p>
+                <p className="upload-info">{demandConfidence.detail}</p>
+              </InfoCard>
+
               <InfoCard title="Accuracy Check">
                 {backtestSummary ? (
                   <p className="upload-info">
@@ -531,6 +551,9 @@ function DashboardPage() {
                     ? `; skipped ${uploadInfo.skippedRows} invalid or out-of-hours rows`
                     : ""}
                   . Metric: {uploadInfo.demandMetric?.column || "row count"}.
+                  {uploadInfo.observedDays
+                    ? ` Observed days: ${uploadInfo.observedDays}.`
+                    : ""}
                   {uploadInfo.actualStaffRows > 0
                     ? ` Actual staffing rows: ${uploadInfo.actualStaffRows}.`
                     : ""}

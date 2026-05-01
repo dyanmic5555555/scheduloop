@@ -15,6 +15,10 @@ import {
   calculateBacktestSummary,
   normalizeStaffCount,
 } from "../src/utils/staffing.js";
+import {
+  getCsvBlendWeight,
+  getDemandConfidence,
+} from "../src/utils/demandModel.js";
 
 const tests = [];
 
@@ -127,6 +131,28 @@ test("CSV demand uses weighted demand columns and actual staff", () => {
   assert.equal(demand.actualStaffFallback[1], 3);
 });
 
+test("CSV demand averages units by observed business day", () => {
+  const csv = [
+    "timestamp,orders,staff_count",
+    "2026-01-02T09:05:00,5,2",
+    "2026-01-02T09:10:00,5,4",
+    "2026-01-09T09:05:00,20,6",
+  ].join("\n");
+
+  const demand = parseCsvDemand(csv, {
+    openingHours: { open: "09:00", close: "09:30" },
+    intervalMinutes: 30,
+    now: () => new Date("2026-01-10T12:00:00Z"),
+  });
+
+  assert.equal(demand.observedDays, 2);
+  assert.equal(demand.weekdaySampleCounts[5], 2);
+  assert.equal(demand.fallbackUnits[0], 15);
+  assert.equal(demand.byWeekdayUnits[5][0], 15);
+  assert.equal(demand.actualStaffFallback[0], 4.5);
+  assert.equal(demand.actualStaffByWeekday[5][0], 4.5);
+});
+
 test("CSV demand rejects files without timestamp columns", () => {
   assert.throws(
     () => parseCsvDemand("name,count\nAlice,1"),
@@ -216,6 +242,52 @@ test("backtest summary compares predictions with actual staff", () => {
   assert.equal(summary.meanAbsoluteError, 1);
   assert.equal(summary.underStaffedBlocks, 1);
   assert.equal(summary.overStaffedBlocks, 1);
+});
+
+test("CSV blend weight trusts stronger weekday samples more", () => {
+  assert.equal(
+    getCsvBlendWeight({
+      hasCsv: true,
+      hasWeekdayData: true,
+      weekdaySampleCount: 6,
+      observedDays: 20,
+    }),
+    0.9
+  );
+  assert.equal(
+    getCsvBlendWeight({
+      hasCsv: true,
+      hasWeekdayData: true,
+      weekdaySampleCount: 1,
+      observedDays: 20,
+    }),
+    0.5
+  );
+  assert.equal(
+    getCsvBlendWeight({
+      hasCsv: true,
+      hasWeekdayData: false,
+      weekdaySampleCount: 0,
+      observedDays: 7,
+    }),
+    0.35
+  );
+});
+
+test("demand confidence labels weak and strong uploaded data", () => {
+  assert.equal(getDemandConfidence(null, 5).label, "Preset");
+  assert.equal(
+    getDemandConfidence({ rows: 20, observedDays: 3, weekdaySampleCounts: [] }, 5)
+      .label,
+    "Low"
+  );
+  assert.equal(
+    getDemandConfidence(
+      { rows: 100, observedDays: 30, weekdaySampleCounts: [0, 0, 0, 0, 0, 6] },
+      5
+    ).label,
+    "High"
+  );
 });
 
 let failed = 0;
