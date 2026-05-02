@@ -4,6 +4,7 @@ import InfoCard from "../components/InfoCard";
 import CalendarPanel from "../components/CalendarPanel";
 import StaffBreakdownPanel from "../components/StaffBreakdownPanel";
 import AccuracySettingsPanel from "../components/AccuracySettingsPanel";
+import ForecastFeedbackPanel from "../components/ForecastFeedbackPanel";
 import { useAuth } from "../auth/AuthContext";
 import { useBusinessProfile } from "../business/BusinessProfileContext";
 import { useTheme } from "../theme/ThemeContext";
@@ -27,12 +28,29 @@ import {
   applyMinimumTotalStaff,
   calculateBacktestSummary,
   calculateRoleStaff,
+  normalizeStaffCount,
+  runForecastBacktest,
 } from "../utils/staffing";
 import {
   getCsvBlendWeight,
+  getCsvDemandUnitsForRole,
   getDemandConfidence,
+  hasRoleSpecificDemandForRoles,
   isCurrentCsvDemandModel,
 } from "../utils/demandModel";
+import {
+  getAverageFeedbackCorrection,
+  getStaffingFeedback,
+  saveStaffingFeedback,
+  TOTAL_FEEDBACK_ROLE_ID,
+} from "../utils/staffingFeedback";
+import {
+  calculateContextMultiplier,
+  getContextAdjustmentSummary,
+  hasActiveDayContext,
+  normaliseDayConfigs,
+  normaliseDayContext,
+} from "../utils/dayContext";
 
 const DAY_TYPE_SCALE = {
   quiet: 0.8,
@@ -77,6 +95,10 @@ function getInitialRoles(profile) {
   return getBusinessPresetRoles(profile?.businessType || "gym");
 }
 
+function getInitialDayConfigs(profile) {
+  return normaliseDayConfigs(profile?.dayConfigs || buildInitialDayConfigs());
+}
+
 function getBusinessTypeLabel(businessType) {
   if (businessType === "gym") return "Gym / Fitness";
   if (businessType === "cafe") return "Cafe / Restaurant";
@@ -115,6 +137,41 @@ function parseSelectedDateLabel(dateKey) {
 function formatStaffHours(hours) {
   const rounded = Math.round((Number(hours) || 0) * 100) / 100;
   return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+}
+
+function formatPercentChange(percent) {
+  const rounded = Math.round(Number(percent) || 0);
+  if (rounded > 0) return `+${rounded}%`;
+  return `${rounded}%`;
+}
+
+function applyTotalFeedbackCorrection(point, roles, peakStaff, correction) {
+  const adjustment = Number.isFinite(Number(correction))
+    ? Math.round(Number(correction))
+    : 0;
+
+  if (adjustment === 0 || roles.length === 0) return point;
+
+  const targetRole = roles.find((role) => role.requiredDuringOpen) || roles[0];
+  const currentValue = normalizeStaffCount(point[targetRole.id]);
+  const minStaff = normalizeStaffCount(targetRole.minStaff);
+  const maxStaff =
+    normalizeStaffCount(targetRole.maxStaff) ||
+    normalizeStaffCount(peakStaff?.[targetRole.id]) ||
+    Math.max(minStaff, 5);
+  const nextValue = Math.max(
+    minStaff,
+    Math.min(Math.max(maxStaff, minStaff), currentValue + adjustment)
+  );
+  const difference = nextValue - currentValue;
+
+  if (difference === 0) return point;
+
+  return {
+    ...point,
+    [targetRole.id]: nextValue,
+    total: Math.max(0, (point.total || 0) + difference),
+  };
 }
 
 function MetricIcon({ name }) {
@@ -217,7 +274,10 @@ function DashboardPage() {
     toLocalDateKey(new Date())
   );
   const [dayConfigs, setDayConfigs] = useState(() =>
-    profile?.dayConfigs || buildInitialDayConfigs()
+    getInitialDayConfigs(profile)
+  );
+  const [staffingFeedback, setStaffingFeedback] = useState(() =>
+    getStaffingFeedback(profile)
   );
   const [csvCurves, setCsvCurves] = useState(storedCsvDemand);
   const [uploadError, setUploadError] = useState(() =>
@@ -233,9 +293,12 @@ function DashboardPage() {
 
   const hasCsv = !!(csvCurves && csvCurves.rows > 0);
   const busyScale = hasCsv ? 1 : BUSY_SCALE[busyLevel] ?? 1.0;
-  const currentDayConfig = dayConfigs[selectedDate];
+  const currentDayConfig = dayConfigs[selectedDate] || {};
   const dayType = currentDayConfig?.dayType || "normal";
   const dayScale = DAY_TYPE_SCALE[dayType] ?? 1.0;
+  const selectedDayContext = normaliseDayContext(currentDayConfig.context);
+  const hasSelectedContext = hasActiveDayContext(selectedDayContext);
+  const contextSummary = getContextAdjustmentSummary(selectedDayContext);
 
   const persistProfilePatch = async (patch) => {
     try {
@@ -316,6 +379,11 @@ function DashboardPage() {
 
   const chartData = useMemo(() => {
     const selectedWeekday = getWeekdayFromDateKey(selectedDate);
+    const activeDayContext = normaliseDayContext(
+      dayConfigs[selectedDate]?.context
+    );
+    const activeContextMultiplier =
+      calculateContextMultiplier(activeDayContext);
     const weekdaySampleCount =
       csvCurves?.weekdaySampleCounts?.[selectedWeekday] || 0;
     const observedDays = csvCurves?.observedDays || 0;
@@ -340,6 +408,7 @@ function DashboardPage() {
         hasWeekdayData,
         weekdaySampleCount,
         observedDays,
+        totalRows: csvCurves?.rows || 0,
       });
       const csvDemand =
         hasCsv && csvSlotIndex !== -1
@@ -358,11 +427,16 @@ function DashboardPage() {
           ? csvWeight * csvDemand + (1 - csvWeight) * preset
           : preset;
       const demand = Math.min(
-        Math.max(baseDemand * busyScale * dayScale, 0),
+        Math.max(baseDemand * busyScale * dayScale * activeContextMultiplier, 0),
         1.5
       );
+      const adjustedDemandUnits =
+        demandUnits !== null
+          ? Math.max(0, demandUnits * activeContextMultiplier)
+          : demandUnits;
       point.demandScore = demand;
-      point.demandUnits = demandUnits;
+      point.demandUnits = adjustedDemandUnits;
+      point.contextMultiplier = activeContextMultiplier;
       const coverageFlags = getCoverageWindowFlags(
         slotIndex,
         slotLabels.length,
@@ -373,27 +447,61 @@ function DashboardPage() {
 
       let total = 0;
       roles.forEach((role) => {
+        const rawRoleDemandUnits = getCsvDemandUnitsForRole({
+          csvDemand: csvCurves,
+          role,
+          weekday: selectedWeekday,
+          slotIndex: csvSlotIndex,
+          useWeekdayData: hasWeekdayData,
+        });
+        const roleDemandUnits =
+          rawRoleDemandUnits !== null && rawRoleDemandUnits !== undefined
+            ? Math.max(0, rawRoleDemandUnits * activeContextMultiplier)
+            : rawRoleDemandUnits;
+        const feedbackCorrection = getAverageFeedbackCorrection({
+          weekday: selectedWeekday,
+          hour: slotLabel,
+          roleId: role.id,
+          feedbackEntries: staffingFeedback,
+        });
         const value = calculateRoleStaff({
           demand,
-          demandUnits,
+          demandUnits: adjustedDemandUnits,
+          roleDemandUnits,
           role,
           absoluteIndex,
           peak: peakStaff[role.id],
+          roleCount: roles.length,
           intervalMinutes,
           operatingRules,
           forceMinimum: forceMinimum && role.requiredDuringOpen,
+          feedbackCorrection,
         });
         point[role.id] = value;
         total += value;
       });
 
       point.total = total;
-      return applyMinimumTotalStaff(
+      const minimumAdjustedPoint = applyMinimumTotalStaff(
         point,
         roles,
         forceMinimum
           ? Math.max(operatingRules.minTotalStaff || 0, 1)
           : operatingRules.minTotalStaff
+      );
+
+      const totalFeedbackCorrection = getAverageFeedbackCorrection({
+        weekday: selectedWeekday,
+        hour: slotLabel,
+        roleId: TOTAL_FEEDBACK_ROLE_ID,
+        feedbackEntries: staffingFeedback,
+      });
+
+      return applyTotalFeedbackCorrection(
+        minimumAdjustedPoint,
+        roles,
+        peakStaff,
+        totalFeedbackCorrection
       );
     });
   }, [
@@ -402,11 +510,13 @@ function DashboardPage() {
     openingHours,
     operatingRules,
     selectedDate,
+    dayConfigs,
     busyScale,
     dayScale,
     hasCsv,
     csvCurves,
     presetShape,
+    staffingFeedback,
   ]);
 
   const totalStaffHours = useMemo(
@@ -420,13 +530,31 @@ function DashboardPage() {
   );
 
   const selectedWeekday = getWeekdayFromDateKey(selectedDate);
-  const demandConfidence = useMemo(
-    () => getDemandConfidence(csvCurves, selectedWeekday),
-    [csvCurves, selectedWeekday]
+  const hasRoleSpecificDemand = useMemo(
+    () => hasRoleSpecificDemandForRoles(csvCurves, roles),
+    [csvCurves, roles]
   );
-  const backtestSummary = useMemo(
-    () => calculateBacktestSummary(chartData, csvCurves, selectedWeekday),
-    [chartData, csvCurves, selectedWeekday]
+  const demandConfidence = getDemandConfidence(
+    csvCurves ? { ...csvCurves, hasRoleSpecificDemand } : csvCurves,
+    selectedWeekday,
+    {
+      hasManagerFeedback: staffingFeedback.length > 0,
+      hasDayContext: hasSelectedContext,
+    }
+  );
+  const backtestSummary = calculateBacktestSummary(
+    chartData,
+    csvCurves,
+    selectedWeekday
+  );
+  const forecastBacktest = useMemo(
+    () =>
+      runForecastBacktest({
+        historicalData: csvCurves,
+        roles,
+        businessProfile: { operatingRules, peakStaff },
+      }),
+    [csvCurves, roles, operatingRules, peakStaff]
   );
 
   const peakDemandSummary = useMemo(() => {
@@ -466,25 +594,37 @@ function DashboardPage() {
   }, [chartData, csvCurves, hasCsv]);
 
   const friendlyConfidence = getFriendlyConfidence(demandConfidence);
+  const confidenceLabel = demandConfidence.score
+    ? `${friendlyConfidence.value} (${demandConfidence.score}/100)`
+    : friendlyConfidence.value;
   const selectedDateLabel = parseSelectedDateLabel(selectedDate);
   const staffHoursLabel = formatStaffHours(totalStaffHours);
   const forecastBasis = hasCsv
     ? `Uploaded ${csvCurves.rows.toLocaleString()} rows across ${
         csvCurves.observedDays || "several"
-      } observed days.`
+      } observed days${
+        hasRoleSpecificDemand ? ", including role-specific demand." : "."
+      }`
     : "Based on your business profile and busiest-time role settings.";
 
   const handleDayConfigChange = (date, partialConfig) => {
-    const nextConfigs = {
-      ...dayConfigs,
-      [date]: {
-        ...(dayConfigs[date] || {}),
-        ...partialConfig,
-      },
+    const nextConfig = {
+      ...(dayConfigs[date] || {}),
+      ...partialConfig,
     };
 
-    setDayConfigs(nextConfigs);
-    persistProfilePatch({ dayConfigs: nextConfigs });
+    if (Object.prototype.hasOwnProperty.call(partialConfig, "context")) {
+      nextConfig.context = normaliseDayContext(partialConfig.context);
+    }
+
+    const nextConfigs = {
+      ...dayConfigs,
+      [date]: nextConfig,
+    };
+    const normalisedConfigs = normaliseDayConfigs(nextConfigs);
+
+    setDayConfigs(normalisedConfigs);
+    persistProfilePatch({ dayConfigs: normalisedConfigs });
   };
 
   const handleStaffingChange = (nextRoles, nextPeakStaff) => {
@@ -497,6 +637,21 @@ function DashboardPage() {
     const normalizedRules = normalizeOperatingRules(nextRules);
     setOperatingRules(normalizedRules);
     persistProfilePatch({ operatingRules: normalizedRules });
+  };
+
+  const handleFeedbackSave = async (feedback) => {
+    const previousFeedback = staffingFeedback;
+    const nextFeedback = saveStaffingFeedback(staffingFeedback, feedback);
+    setStaffingFeedback(nextFeedback);
+
+    try {
+      await saveProfile({ staffingFeedback: nextFeedback });
+      setDashboardError("");
+    } catch (err) {
+      console.error(err);
+      setStaffingFeedback(previousFeedback);
+      setDashboardError("Your forecast feedback could not be saved.");
+    }
   };
 
   const peakHoursLabel = useMemo(() => {
@@ -555,6 +710,8 @@ function DashboardPage() {
           <div className="view-tabs" role="tablist" aria-label="Dashboard views">
             <button
               type="button"
+              role="tab"
+              aria-selected={activeView === "planner"}
               className={
                 "view-tab" + (activeView === "planner" ? " active" : "")
               }
@@ -564,6 +721,8 @@ function DashboardPage() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeView === "setup"}
               className={"view-tab" + (activeView === "setup" ? " active" : "")}
               onClick={() => setActiveView("setup")}
             >
@@ -628,7 +787,7 @@ function DashboardPage() {
               </div>
               <div>
                 <span>Confidence</span>
-                <strong>{friendlyConfidence.value}</strong>
+                <strong>{confidenceLabel}</strong>
               </div>
             </div>
           </section>
@@ -643,7 +802,7 @@ function DashboardPage() {
             />
             <PlannerMetricCard
               label="Forecast confidence"
-              value={friendlyConfidence.value}
+              value={confidenceLabel}
               detail={friendlyConfidence.detail}
               tone={friendlyConfidence.value === "High" ? "success" : "default"}
               icon="shield"
@@ -659,6 +818,38 @@ function DashboardPage() {
           <section className="planner-workspace">
             <div className="planner-chart">
               <ShapeOfDayChart roles={roles} data={chartData} />
+              {hasSelectedContext && (
+                <div className="context-adjustment-note">
+                  <div className="context-adjustment-header">
+                    <strong>Context included</strong>
+                    <span>
+                      Final context adjustment:{" "}
+                      {formatPercentChange(contextSummary.percentChange)}
+                    </span>
+                  </div>
+                  <ul>
+                    {contextSummary.labels.map((label) => (
+                      <li key={label}>{label}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="forecast-accuracy-note">
+                <strong>Accuracy check</strong>
+                <span>
+                  {forecastBacktest?.status === "ready"
+                    ? forecastBacktest.summary
+                    : forecastBacktest?.summary ||
+                      "Backtesting will appear after enough CSV history is uploaded."}
+                </span>
+              </div>
+              <ForecastFeedbackPanel
+                selectedDate={selectedDate}
+                chartData={chartData}
+                roles={roles}
+                feedbackEntries={staffingFeedback}
+                onFeedbackSave={handleFeedbackSave}
+              />
             </div>
 
             <div className="planner-calendar">
@@ -715,6 +906,7 @@ function DashboardPage() {
                   accept=".csv"
                   onChange={handleCsvChange}
                   className="csv-input"
+                  aria-label="Upload CSV trading data"
                 />
                 {uploadError && <p className="upload-error">{uploadError}</p>}
                 {uploadInfo && !uploadError && (
@@ -730,6 +922,9 @@ function DashboardPage() {
                     {uploadInfo.actualStaffRows > 0
                       ? ` Actual staffing rows: ${uploadInfo.actualStaffRows}.`
                       : ""}
+                    {uploadInfo.hasRoleSpecificDemand
+                      ? " Role-specific demand columns detected."
+                      : ""}
                     {uploadInfo.intervalMinutes !==
                     operatingRules.intervalMinutes
                       ? " Re-upload after changing block size."
@@ -739,14 +934,19 @@ function DashboardPage() {
                 {!uploadInfo && !uploadError && (
                   <p className="upload-info">
                     Upload trading data later to replace this starter estimate.
-                    CSV needs a time, timestamp, date, or datetime column.
+                    CSV needs a time, timestamp, date, or datetime column. For
+                    better role recommendations, add columns such as
+                    drink_orders, food_orders, customers, check_ins, or
+                    class_bookings.
                   </p>
                 )}
 
                 <div className="setup-inline-status">
                   <span>Staffing history check</span>
                   <p>
-                    {backtestSummary
+                    {forecastBacktest?.status === "ready"
+                      ? forecastBacktest.summary
+                      : backtestSummary
                       ? `Average difference: ${backtestSummary.meanAbsoluteError.toFixed(
                           1
                         )} staff per block.`

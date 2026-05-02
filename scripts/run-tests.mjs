@@ -14,13 +14,35 @@ import {
   applyMinimumTotalStaff,
   calculateBacktestSummary,
   normalizeStaffCount,
+  runForecastBacktest,
 } from "../src/utils/staffing.js";
 import {
   CSV_DEMAND_MODEL_VERSION,
+  calculateForecastConfidence,
   getCsvBlendWeight,
+  getCsvDemandUnitsForRole,
+  getCsvTrustWeight,
   getDemandConfidence,
   isCurrentCsvDemandModel,
 } from "../src/utils/demandModel.js";
+import {
+  getAverageFeedbackCorrection,
+  getStaffingFeedback,
+  saveStaffingFeedback,
+} from "../src/utils/staffingFeedback.js";
+import {
+  calculateContextMultiplier,
+  getActiveContextLabels,
+  getContextAdjustmentSummary,
+  getDefaultDayContext,
+  hasActiveDayContext,
+  normaliseDayConfigs,
+  normaliseDayContext,
+} from "../src/utils/dayContext.js";
+import {
+  detectDemandColumns,
+  getDemandColumnForRole,
+} from "../src/utils/roleDemand.js";
 
 const tests = [];
 
@@ -145,6 +167,59 @@ test("CSV demand uses weighted demand columns and actual staff", () => {
   assert.equal(demand.actualStaffFallback[1], 3);
 });
 
+test("CSV demand detects role-specific columns", () => {
+  const headers = [
+    "timestamp",
+    "drink_orders",
+    "food_orders",
+    "customers",
+    "staff",
+  ];
+  const detected = detectDemandColumns(headers);
+
+  assert.equal(detected.hasRoleSpecificDemand, true);
+  assert.equal(
+    getDemandColumnForRole({ id: "barista", name: "Barista" }, detected)
+      .key,
+    "drinkOrders"
+  );
+  assert.equal(
+    getDemandColumnForRole({ id: "kitchen", name: "Kitchen" }, detected).key,
+    "foodOrders"
+  );
+  assert.equal(
+    getDemandColumnForRole({ id: "wait", name: "Wait Staff" }, detected).key,
+    "customers"
+  );
+});
+
+test("CSV demand stores role-specific demand curves", () => {
+  const csv = [
+    "timestamp,drink_orders,food_orders,customers,staff",
+    "2026-01-02T09:00:00,10,4,12,2",
+    "2026-01-02T09:30:00,20,8,18,3",
+  ].join("\n");
+
+  const demand = parseCsvDemand(csv, {
+    openingHours: { open: "09:00", close: "10:00" },
+    intervalMinutes: 30,
+    now: () => new Date("2026-01-02T12:00:00Z"),
+  });
+
+  assert.equal(demand.hasRoleSpecificDemand, true);
+  assert.equal(demand.demandSources.drinkOrders.fallbackUnits[0], 10);
+  assert.equal(
+    getCsvDemandUnitsForRole({
+      csvDemand: demand,
+      role: { id: "barista", name: "Barista" },
+      weekday: 5,
+      slotIndex: 1,
+      useWeekdayData: true,
+    }),
+    20
+  );
+});
+
 test("CSV demand averages units by observed business day", () => {
   const csv = [
     "timestamp,orders,staff_count",
@@ -264,6 +339,75 @@ test("minimum total staff fills a required role", () => {
   assert.equal(adjusted.total, 2);
 });
 
+test("day context defaults and invalid values stay safe", () => {
+  const defaultContext = getDefaultDayContext();
+  assert.equal(hasActiveDayContext(defaultContext), false);
+  assert.equal(calculateContextMultiplier(defaultContext), 1);
+
+  const context = normaliseDayContext({
+    promotion: "yes",
+    payday: true,
+    weather: {
+      enabled: true,
+      condition: "hail",
+      temperatureC: "not a number",
+    },
+  });
+
+  assert.equal(context.promotion, false);
+  assert.equal(context.payday, true);
+  assert.equal(context.weather.condition, "normal");
+  assert.equal(context.weather.temperatureC, null);
+  assert.equal(hasActiveDayContext(context), true);
+});
+
+test("day context multipliers compound and clamp", () => {
+  assert.equal(
+    calculateContextMultiplier({
+      payday: true,
+      localEvent: true,
+    }),
+    1.296
+  );
+
+  assert.equal(
+    calculateContextMultiplier({
+      promotion: true,
+      localEvent: true,
+      sportEvent: true,
+      payday: true,
+      bankHoliday: true,
+      weather: { enabled: true, condition: "hot" },
+    }),
+    1.5
+  );
+});
+
+test("day context summaries explain active assumptions", () => {
+  const summary = getContextAdjustmentSummary({
+    roadworks: true,
+    weather: { enabled: true, condition: "rain" },
+  });
+
+  assert.equal(summary.multiplier, 0.855);
+  assert.equal(summary.percentChange, -15);
+  assert.deepEqual(summary.labels, ["Roadworks nearby: -10%", "Rain: -5%"]);
+  assert.deepEqual(getActiveContextLabels({ bankHoliday: true }), [
+    "Bank holiday",
+  ]);
+});
+
+test("day config normalization preserves old day type-only entries", () => {
+  const configs = normaliseDayConfigs({
+    "2026-05-01": { dayType: "busy" },
+    "2026-05-02": { dayType: "event", context: { payday: true } },
+  });
+
+  assert.equal(configs["2026-05-01"].dayType, "busy");
+  assert.equal("context" in configs["2026-05-01"], false);
+  assert.equal(configs["2026-05-02"].context.payday, true);
+});
+
 test("backtest summary compares predictions with actual staff", () => {
   const summary = calculateBacktestSummary(
     [
@@ -284,38 +428,149 @@ test("backtest summary compares predictions with actual staff", () => {
   assert.equal(summary.overStaffedBlocks, 1);
 });
 
-test("CSV blend weight trusts stronger weekday samples more", () => {
+test("manager feedback stores and averages corrections", () => {
+  const feedback = saveStaffingFeedback([null], {
+    date: "2026-01-02",
+    hour: "09:00",
+    roleId: "barista",
+    predictedStaff: 2,
+    actualStaff: 3,
+    feedback: "understaffed",
+  });
+
+  assert.equal(feedback.length, 1);
   assert.equal(
-    getCsvBlendWeight({
-      hasCsv: true,
+    getAverageFeedbackCorrection({
+      weekday: 5,
+      hour: "09:00",
+      roleId: "barista",
+      feedbackEntries: feedback,
+    }),
+    1
+  );
+
+  const neutralFeedback = saveStaffingFeedback(feedback, {
+    date: "2026-01-09",
+    hour: "09:00",
+    roleId: "barista",
+    predictedStaff: 2,
+    actualStaff: 2,
+    feedback: "right",
+  });
+
+  assert.equal(getStaffingFeedback({ staffingFeedback: [null] }).length, 0);
+  assert.equal(
+    getAverageFeedbackCorrection({
+      weekday: 5,
+      hour: "09:00",
+      roleId: "barista",
+      feedbackEntries: [null, ...neutralFeedback, { date: "not-a-date" }],
+    }),
+    0.5
+  );
+});
+
+test("forecast backtest returns a safe accuracy summary", () => {
+  const dailyDemandByDate = {};
+
+  for (let day = 1; day <= 8; day += 1) {
+    const date = `2026-01-${String(day).padStart(2, "0")}`;
+    dailyDemandByDate[date] = {
+      weekday: new Date(`${date}T12:00:00`).getDay(),
+      demandUnits: day === 8 ? [Number.NaN, 20 + day] : [10 + day, 20 + day],
+      actualStaff: day === 8 ? [Number.NaN, 2] : [1, 2],
+    };
+  }
+
+  const result = runForecastBacktest({
+    historicalData: {
+      slotLabels: ["09:00", "09:30"],
+      intervalMinutes: 30,
+      dailyDemandByDate,
+    },
+    roles: [
+      {
+        id: "barista",
+        name: "Barista",
+        curve: [1, 1],
+        serviceRate: 20,
+        minStaff: 1,
+        demandWeight: 1,
+        requiredDuringOpen: true,
+      },
+    ],
+    businessProfile: { peakStaff: { barista: 3 } },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.sampleSize, 8);
+});
+
+test("CSV trust weight increases with usable history", () => {
+  assert.equal(getCsvTrustWeight({ usableCsvDays: 0, totalRows: 0 }), 0);
+  assert.equal(
+    getCsvTrustWeight({
+      usableCsvDays: 3,
+      weekdaySampleSize: 1,
+      totalRows: 20,
       hasWeekdayData: true,
-      weekdaySampleCount: 6,
-      observedDays: 20,
+    }),
+    0.25
+  );
+  assert.equal(
+    getCsvTrustWeight({
+      usableCsvDays: 12,
+      weekdaySampleSize: 2,
+      totalRows: 80,
+      hasWeekdayData: true,
+    }),
+    0.5
+  );
+  assert.equal(
+    getCsvTrustWeight({
+      usableCsvDays: 45,
+      weekdaySampleSize: 6,
+      totalRows: 500,
+      hasWeekdayData: true,
+    }),
+    0.75
+  );
+  assert.equal(
+    getCsvTrustWeight({
+      usableCsvDays: 120,
+      weekdaySampleSize: 12,
+      totalRows: 1000,
+      hasWeekdayData: true,
     }),
     0.9
   );
+});
+
+test("CSV blend weight falls back safely without weekday data", () => {
   assert.equal(
     getCsvBlendWeight({
       hasCsv: true,
-      hasWeekdayData: true,
-      weekdaySampleCount: 1,
-      observedDays: 20,
+      hasWeekdayData: false,
+      weekdaySampleCount: 0,
+      observedDays: 12,
+      totalRows: 80,
     }),
-    0.5
+    0.35
   );
   assert.equal(
     getCsvBlendWeight({
       hasCsv: true,
       hasWeekdayData: false,
       weekdaySampleCount: 0,
-      observedDays: 7,
+      observedDays: 120,
+      totalRows: 1000,
     }),
-    0.35
+    0.6
   );
 });
 
 test("demand confidence labels weak and strong uploaded data", () => {
-  assert.equal(getDemandConfidence(null, 5).label, "Preset");
+  assert.equal(getDemandConfidence(null, 5).label, "Low");
   assert.equal(
     getDemandConfidence({ rows: 20, observedDays: 3, weekdaySampleCounts: [] }, 5)
       .label,
@@ -326,7 +581,56 @@ test("demand confidence labels weak and strong uploaded data", () => {
       { rows: 100, observedDays: 30, weekdaySampleCounts: [0, 0, 0, 0, 0, 6] },
       5
     ).label,
+    "Medium"
+  );
+  assert.equal(
+    getDemandConfidence(
+      {
+        rows: 100,
+        observedDays: 30,
+        weekdaySampleCounts: [0, 0, 0, 0, 0, 6],
+        hasRoleSpecificDemand: true,
+      },
+      5
+    ).label,
     "High"
+  );
+});
+
+test("forecast confidence explains the signal quality", () => {
+  const confidence = calculateForecastConfidence({
+    usableCsvDays: 30,
+    weekdaySampleSize: 5,
+    hasRoleSpecificDemand: true,
+    hasStaffHistory: true,
+    hasManagerFeedback: false,
+  });
+
+  assert.equal(confidence.level, "High");
+  assert.equal(confidence.reasons.some((reason) => reason.includes("30")), true);
+});
+
+test("forecast confidence mentions context without increasing score", () => {
+  const withoutContext = calculateForecastConfidence({
+    usableCsvDays: 7,
+    weekdaySampleSize: 2,
+  });
+  const withContext = calculateForecastConfidence({
+    usableCsvDays: 7,
+    weekdaySampleSize: 2,
+    hasDayContext: true,
+  });
+
+  assert.equal(withContext.score, withoutContext.score);
+  assert.equal(
+    withContext.reasons.includes(
+      "Context tags included using default assumptions"
+    ),
+    true
+  );
+  assert.match(
+    getDemandConfidence(null, 5, { hasDayContext: true }).detail,
+    /Context tags use default assumptions/
   );
 });
 

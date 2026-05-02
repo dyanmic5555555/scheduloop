@@ -1,5 +1,18 @@
 # React + Vite
 
+## Scheduloop day context
+
+Day context tags let a business mark unusual calendar dates, such as
+promotions, local events, roadworks, payday periods, holidays, or weather.
+Context is stored on the selected date inside the business profile
+`dayConfigs` map and is optional, so older day type-only entries still work.
+
+The Shape of Day forecast applies context as a conservative rule-based demand
+multiplier before demand is converted into staff. Defaults are starting
+assumptions only; businesses should tag past and future days consistently so a
+future version can learn business-specific effects by comparing similar tagged
+days with similar untagged days.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

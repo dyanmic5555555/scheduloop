@@ -1,14 +1,29 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { parseLocalDateKey, toLocalDateKey } from "../utils/schedule";
+import {
+  DAY_CONTEXT_TAGS,
+  WEATHER_CONDITIONS,
+  getActiveContextLabels,
+  hasActiveDayContext,
+  normaliseDayContext,
+} from "../utils/dayContext";
 
 const DAY_TYPE_OPTIONS = [
   { value: "quiet", label: "Quiet", helper: "Lower than usual" },
   { value: "normal", label: "Normal", helper: "Typical day" },
   { value: "busy", label: "Busy", helper: "Higher demand" },
-  { value: "event", label: "Event day", helper: "Special spike" },
 ];
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const WEATHER_LABELS = {
+  normal: "Normal",
+  rain: "Rain",
+  sunny: "Sunny",
+  hot: "Hot",
+  cold: "Cold",
+  windy: "Windy",
+};
 
 function CalendarPanel({
   selectedDate,
@@ -64,11 +79,49 @@ function CalendarPanel({
   };
 
   const selectedConfig = dayConfigs[selectedDate] || {};
-  const selectedDayType = selectedConfig.dayType || "normal";
+  const isLegacyEventDay = selectedConfig.dayType === "event";
+  const selectedDayType = isLegacyEventDay
+    ? "busy"
+    : selectedConfig.dayType || "normal";
+  const selectedContext = normaliseDayContext(selectedConfig.context);
+  const selectedDisplayContext = isLegacyEventDay
+    ? normaliseDayContext({ ...selectedContext, localEvent: true })
+    : selectedContext;
+
+  useEffect(() => {
+    if (!isLegacyEventDay) return;
+
+    onDayConfigChange(selectedDate, {
+      dayType: "busy",
+      context: normaliseDayContext({
+        ...normaliseDayContext(selectedConfig.context),
+        localEvent: true,
+      }),
+    });
+  }, [
+    isLegacyEventDay,
+    onDayConfigChange,
+    selectedDate,
+    selectedConfig.context,
+  ]);
 
   const getDayTypeLabel = (dayType) => {
+    if (dayType === "event") return "Event day";
     const option = DAY_TYPE_OPTIONS.find((item) => item.value === dayType);
     return option ? option.label : dayType;
+  };
+
+  const updateSelectedContext = (patch) => {
+    const nextContext = normaliseDayContext({
+      ...selectedDisplayContext,
+      ...patch,
+      weather: {
+        ...selectedDisplayContext.weather,
+        ...(patch.weather || {}),
+      },
+    });
+
+    onDayConfigChange(selectedDate, { context: nextContext });
   };
 
   return (
@@ -87,6 +140,7 @@ function CalendarPanel({
           type="button"
           className="calendar-nav-btn"
           onClick={goPrevMonth}
+          aria-label="Previous month"
         >
           &lt;
         </button>
@@ -95,6 +149,7 @@ function CalendarPanel({
           type="button"
           className="calendar-nav-btn"
           onClick={goNextMonth}
+          aria-label="Next month"
         >
           &gt;
         </button>
@@ -119,9 +174,29 @@ function CalendarPanel({
           const isSelected = iso === selectedDate;
           const config = dayConfigs[iso];
           const dayType = config?.dayType;
-          const isEventDay = dayType === "event";
+          const displayDayType = dayType === "event" ? "busy" : dayType;
+          const displayContext =
+            dayType === "event"
+              ? normaliseDayContext({
+                  ...normaliseDayContext(config?.context),
+                  localEvent: true,
+                })
+              : config?.context;
+          const hasContext = hasActiveDayContext(displayContext);
+          const contextLabels = getActiveContextLabels(displayContext);
           const dotTitle =
-            config?.note || (dayType ? getDayTypeLabel(dayType) : undefined);
+            config?.note ||
+            [
+              displayDayType ? getDayTypeLabel(displayDayType) : null,
+              ...contextLabels,
+            ]
+              .filter(Boolean)
+              .join(", ") ||
+            undefined;
+          const ariaContext =
+            contextLabels.length > 0
+              ? `, context: ${contextLabels.join(", ")}`
+              : "";
 
           return (
             <button
@@ -130,17 +205,17 @@ function CalendarPanel({
               className={
                 "calendar-day" +
                 (isSelected ? " selected" : "") +
-                (dayType ? ` calendar-day-${dayType}` : "")
+                (displayDayType ? ` calendar-day-${displayDayType}` : "")
               }
               onClick={() => handleDayClick(dateObj)}
-              aria-label={`${iso}${dayType ? `, ${getDayTypeLabel(dayType)}` : ""}`}
+              aria-label={`${iso}${displayDayType ? `, ${getDayTypeLabel(displayDayType)}` : ""}${ariaContext}`}
             >
               <span className="calendar-day-number">{dayNum}</span>
-              {dayType && (
+              {(displayDayType || hasContext) && (
                 <span
                   className={
                     "calendar-day-dot" +
-                    (isEventDay ? " calendar-day-dot-event" : "")
+                    (hasContext ? " calendar-day-dot-context" : "")
                   }
                   title={dotTitle}
                 />
@@ -159,40 +234,129 @@ function CalendarPanel({
               month: "short",
             })}
           </div>
-          <div className="calendar-detail-sub">
-            Choose how busy this day should be compared with a normal day.
+          <p className="calendar-guidance">
+            Use demand level for the overall day. Use context factors to explain
+            why demand may change.
+          </p>
+        </div>
+
+        <div className="calendar-demand-section">
+          <div className="calendar-section-heading">
+            <h3>Day demand level</h3>
+            <p>Choose the overall demand level for this date.</p>
+          </div>
+
+          <div
+            className="calendar-daytype-row"
+            role="radiogroup"
+            aria-label="Day demand level"
+          >
+            {DAY_TYPE_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={selectedDayType === option.value}
+                className={
+                  "daytype-pill" +
+                  (selectedDayType === option.value ? " active" : "")
+                }
+                onClick={() =>
+                  onDayConfigChange(selectedDate, { dayType: option.value })
+                }
+              >
+                <span className={`daytype-dot daytype-dot-${option.value}`} />
+                <span>{option.label}</span>
+                <small>{option.helper}</small>
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="calendar-daytype-row">
-          {DAY_TYPE_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={
-                "daytype-pill" +
-                (selectedDayType === option.value ? " active" : "")
-              }
-              onClick={() =>
-                onDayConfigChange(selectedDate, { dayType: option.value })
-              }
-            >
-              <span className={`daytype-dot daytype-dot-${option.value}`} />
-              <span>{option.label}</span>
-              <small>{option.helper}</small>
-            </button>
-          ))}
+        <div className="calendar-context-block">
+          <div className="calendar-section-heading">
+            <h3>Context factors</h3>
+            <p>Add anything that might explain unusual demand.</p>
+          </div>
+
+          <div className="calendar-context-grid">
+            {DAY_CONTEXT_TAGS.map((option) => (
+              <label key={option.key} className="context-toggle">
+                <input
+                  type="checkbox"
+                  checked={selectedDisplayContext[option.key]}
+                  onChange={(event) =>
+                    updateSelectedContext({
+                      [option.key]: event.target.checked,
+                    })
+                  }
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="calendar-weather-row">
+            <label className="context-toggle context-weather-enabled">
+              <input
+                type="checkbox"
+                checked={selectedDisplayContext.weather.enabled}
+                onChange={(event) =>
+                  updateSelectedContext({
+                    weather: { enabled: event.target.checked },
+                  })
+                }
+              />
+              <span>Weather</span>
+            </label>
+
+            {selectedDisplayContext.weather.enabled && (
+              <div className="calendar-weather-fields">
+                <select
+                  value={selectedDisplayContext.weather.condition}
+                  onChange={(event) =>
+                    updateSelectedContext({
+                      weather: { condition: event.target.value },
+                    })
+                  }
+                  aria-label="Weather condition"
+                >
+                  {WEATHER_CONDITIONS.map((condition) => (
+                    <option key={condition} value={condition}>
+                      {WEATHER_LABELS[condition]}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="C"
+                  value={selectedDisplayContext.weather.temperatureC ?? ""}
+                  onChange={(event) =>
+                    updateSelectedContext({
+                      weather: { temperatureC: event.target.value },
+                    })
+                  }
+                  aria-label="Temperature in Celsius"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
-        <textarea
-          className="calendar-note-input"
-          placeholder="Add a note, e.g. local event, school holiday, private booking"
-          value={selectedConfig.note || ""}
-          onChange={(e) =>
-            onDayConfigChange(selectedDate, { note: e.target.value })
-          }
-          rows={3}
-        />
+        <label className="calendar-note-field">
+          <span>Manager note</span>
+          <textarea
+            className="calendar-note-input"
+            placeholder="Add a note, e.g. private booking, local roadworks, school holiday"
+            value={selectedConfig.note || ""}
+            onChange={(e) =>
+              onDayConfigChange(selectedDate, { note: e.target.value })
+            }
+            rows={3}
+          />
+        </label>
       </div>
     </div>
   );

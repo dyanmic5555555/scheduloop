@@ -17,6 +17,7 @@ export const BUSINESS_ROLE_PRESETS = {
       serviceRate: 40,
       minStaff: 1,
       demandWeight: 1,
+      preferredDemandSource: "visits",
       requiredDuringOpen: true,
     },
     {
@@ -27,6 +28,7 @@ export const BUSINESS_ROLE_PRESETS = {
       serviceRate: 8,
       minStaff: 0,
       demandWeight: 0.35,
+      preferredDemandSource: "ptBookings",
       requiredDuringOpen: false,
     },
     {
@@ -37,6 +39,7 @@ export const BUSINESS_ROLE_PRESETS = {
       serviceRate: 20,
       minStaff: 0,
       demandWeight: 0.25,
+      preferredDemandSource: "classBookings",
       requiredDuringOpen: false,
     },
   ],
@@ -49,6 +52,7 @@ export const BUSINESS_ROLE_PRESETS = {
       serviceRate: 25,
       minStaff: 1,
       demandWeight: 1,
+      preferredDemandSource: "drinkOrders",
       requiredDuringOpen: true,
     },
     {
@@ -59,6 +63,7 @@ export const BUSINESS_ROLE_PRESETS = {
       serviceRate: 18,
       minStaff: 1,
       demandWeight: 0.7,
+      preferredDemandSource: "foodOrders",
       requiredDuringOpen: true,
     },
     {
@@ -69,6 +74,7 @@ export const BUSINESS_ROLE_PRESETS = {
       serviceRate: 30,
       minStaff: 1,
       demandWeight: 1,
+      preferredDemandSource: "customers",
       requiredDuringOpen: true,
     },
   ],
@@ -78,7 +84,10 @@ export function withRoleAccuracyDefaults(role) {
   return {
     serviceRate: 20,
     minStaff: 0,
+    maxStaff: 0,
     demandWeight: 1,
+    demandShare: 1,
+    preferredDemandSource: "",
     requiredDuringOpen: false,
     ...role,
   };

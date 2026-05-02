@@ -2372,9 +2372,18 @@ html, body, #root {
 
 .theme-root[data-theme="light"] .shape-legend,
 .theme-root[data-theme="light"] .staff-role-color-picker,
-.theme-root[data-theme="light"] .staff-add-color-picker {
+.theme-root[data-theme="light"] .staff-add-color-picker,
+.theme-root[data-theme="light"] .forecast-accuracy-note,
+.theme-root[data-theme="light"] .forecast-feedback-panel {
   background: #f6f9ff;
   border-color: #d8e4f3;
+}
+
+.theme-root[data-theme="light"] .forecast-feedback-controls select,
+.theme-root[data-theme="light"] .forecast-feedback-controls input,
+.theme-root[data-theme="light"] .forecast-feedback-actions button {
+  background: #ffffff;
+  border-color: #c8d5e6;
 }
 
 .theme-root[data-theme="light"] .staff-role-controls {
@@ -2543,17 +2552,263 @@ html, body, #root {
   margin-top: 8px;
 }
 
+.forecast-accuracy-note,
+.forecast-feedback-panel {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(79, 140, 255, 0.08);
+  border: 1px solid rgba(101, 124, 166, 0.22);
+}
+
+.forecast-accuracy-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.forecast-accuracy-note strong {
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.forecast-feedback-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.forecast-feedback-panel h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.forecast-feedback-panel p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.forecast-feedback-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.forecast-feedback-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.forecast-feedback-controls select,
+.forecast-feedback-controls input {
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid rgba(101, 124, 166, 0.32);
+  background: rgba(8, 13, 26, 0.56);
+  color: var(--text-main);
+  padding: 6px 8px;
+}
+
+.forecast-feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.forecast-feedback-actions button {
+  border: 1px solid rgba(101, 124, 166, 0.32);
+  border-radius: 999px;
+  background: rgba(8, 13, 26, 0.4);
+  color: var(--text-main);
+  padding: 7px 11px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.forecast-feedback-actions button.active,
+.forecast-feedback-actions button:hover {
+  border-color: var(--accent);
+  background: rgba(79, 140, 255, 0.16);
+}
+
 .calendar-panel {
   padding: 14px;
-  gap: 9px;
+  gap: 10px;
 }
 
 .calendar-detail {
   padding-top: 10px;
+  gap: 14px;
 }
 
 .calendar-note-input {
   min-height: 60px;
+}
+
+.calendar-day-dot-context {
+  background: #3bd68b;
+}
+
+.calendar-context-block {
+  border-top: 1px solid rgba(101, 124, 166, 0.22);
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.calendar-demand-section {
+  display: grid;
+  gap: 8px;
+}
+
+.calendar-section-heading h3 {
+  margin: 0;
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.calendar-section-heading p,
+.calendar-guidance {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.calendar-guidance {
+  max-width: 34rem;
+}
+
+.calendar-daytype-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(101, 124, 166, 0.28);
+  border-radius: 10px;
+  background: rgba(8, 13, 26, 0.36);
+}
+
+.daytype-pill {
+  min-height: 52px;
+  border: 0;
+  border-right: 1px solid rgba(101, 124, 166, 0.22);
+  border-radius: 0;
+  background: transparent;
+  padding: 7px 8px;
+}
+
+.daytype-pill:last-child {
+  border-right: 0;
+}
+
+.daytype-pill.active {
+  background: rgba(79, 140, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(79, 140, 255, 0.55);
+}
+
+.calendar-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 8px;
+}
+
+.context-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-main);
+  padding: 3px 2px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.context-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.calendar-weather-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.calendar-weather-fields {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 76px;
+  gap: 6px;
+}
+
+.calendar-weather-fields select,
+.calendar-weather-fields input[type="number"] {
+  width: 100%;
+  min-height: 32px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid rgba(101, 124, 166, 0.32);
+  background: rgba(8, 13, 26, 0.48);
+  color: var(--text-main);
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.calendar-note-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.calendar-note-input {
+  min-height: 64px;
+  box-sizing: border-box;
+  font-weight: 400;
+}
+
+.context-adjustment-note {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(59, 214, 139, 0.08);
+  border: 1px solid rgba(59, 214, 139, 0.22);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.context-adjustment-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.context-adjustment-header strong {
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.context-adjustment-note ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
 }
 
 .setup-layout {
@@ -2580,6 +2835,35 @@ html, body, #root {
   box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
 }
 
+.theme-root[data-theme="light"] .calendar-context-block {
+  border-color: #d8e4f3;
+}
+
+.theme-root[data-theme="light"] .calendar-daytype-row {
+  background: #f8fafc;
+  border-color: #c8d5e6;
+}
+
+.theme-root[data-theme="light"] .daytype-pill {
+  border-color: #d8e4f3;
+}
+
+.theme-root[data-theme="light"] .daytype-pill.active {
+  background: #e8f0ff;
+}
+
+.theme-root[data-theme="light"] .calendar-weather-fields select,
+.theme-root[data-theme="light"] .calendar-weather-fields input[type="number"] {
+  background: #ffffff;
+  border-color: #c8d5e6;
+  color: var(--text-main);
+}
+
+.theme-root[data-theme="light"] .context-adjustment-note {
+  background: #f1fbf6;
+  border-color: #bfe8d0;
+}
+
 @media (max-width: 1180px) {
   .planner-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2593,5 +2877,24 @@ html, body, #root {
 
   .planner-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .forecast-accuracy-note,
+  .forecast-feedback-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-context-grid,
+  .calendar-weather-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .forecast-accuracy-note {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .context-adjustment-header {
+    flex-direction: column;
   }
 }

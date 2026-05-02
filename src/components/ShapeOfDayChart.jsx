@@ -11,7 +11,7 @@ import {
 import { useMemo } from "react";
 
 // Inline custom tooltip component
-const ShapeOfDayTooltip = ({ active, payload, label, roles }) => {
+const ShapeOfDayTooltip = ({ active, payload, label, roleNames }) => {
   if (!active || !payload || payload.length === 0) return null;
 
   const totalPoint = payload.find((p) => p.dataKey === "total");
@@ -24,8 +24,7 @@ const ShapeOfDayTooltip = ({ active, payload, label, roles }) => {
         {payload
           .filter((p) => p.dataKey !== "total" && p.value !== 0)
           .map((p) => {
-            const role = roles?.find((r) => r.id === p.dataKey);
-            const name = role ? role.name : p.name || p.dataKey;
+            const name = roleNames[p.dataKey] || p.name || p.dataKey;
 
             return (
               <div key={p.dataKey} className="sod-tooltip-row">
@@ -59,6 +58,10 @@ function ShapeOfDayChart({ roles, data }) {
     });
     return map;
   }, [roles]);
+  const roleNames = useMemo(
+    () => Object.fromEntries(roles.map((role) => [role.id, role.name || role.id])),
+    [roles]
+  );
 
   return (
     <div className="card big-card shape-card">
@@ -109,7 +112,7 @@ function ShapeOfDayChart({ roles, data }) {
             />
             <Tooltip
               cursor={{ stroke: "rgba(148,163,184,0.4)", strokeWidth: 1 }}
-              content={<ShapeOfDayTooltip roles={roles} />}
+              content={<ShapeOfDayTooltip roleNames={roleNames} />}
             />
 
             {/* Role lines – thin, low-contrast */}

@@ -97,6 +97,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                 />
                 <input
                   className="staff-role-name-input"
+                  aria-label={`Role name for ${role.name || "staff role"}`}
                   value={role.name}
                   onChange={(e) =>
                     handleRoleNameChange(role.id, e.target.value)
@@ -209,6 +210,8 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                         : "")
                     }
                     style={{ backgroundColor: color }}
+                    aria-label={`Set ${role.name} colour to ${color}`}
+                    aria-pressed={role.color === color}
                     onClick={() => handleRoleColorChange(role.id, color)}
                   />
                 ))}
@@ -234,6 +237,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
             type="text"
             className="staff-add-input"
             placeholder="e.g. Supervisor"
+            aria-label="New role name"
             value={newRoleName}
             onChange={(e) => setNewRoleName(e.target.value)}
           />
@@ -245,6 +249,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
             className="staff-add-peak-input"
             value={newRolePeak}
             onChange={(e) => setNewRolePeak(e.target.value)}
+            aria-label="New role max staff at peak"
             title="Max staff at your busiest hour"
           />
 
@@ -271,6 +276,8 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                     : "")
                 }
                 style={{ backgroundColor: color }}
+                aria-label={`Set new role colour to ${color}`}
+                aria-pressed={newRoleColor === color}
                 onClick={() => setNewRoleColor(color)}
               />
             ))}

@@ -20,6 +20,7 @@ service cloud.firestore {
         'csvDemand',
         'dayConfigs',
         'operatingRules',
+        'staffingFeedback',
         'ownerUid',
         'updatedAt'
       ]);
@@ -35,6 +36,7 @@ service cloud.firestore {
         'csvDemand',
         'dayConfigs',
         'operatingRules',
+        'staffingFeedback',
         'ownerUid',
         'updatedAt'
       ]);
