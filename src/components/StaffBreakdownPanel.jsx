@@ -4,6 +4,8 @@ import {
   normalizePositiveNumber,
   normalizeStaffCount,
 } from "../utils/staffing";
+import { normalizeHourlyWage } from "../utils/labourCost";
+import { HOURS } from "../utils/schedule";
 
 const COLOR_OPTIONS = ["#4f8cff", "#3bd68b", "#ff776f", "#facc15", "#a855f7"];
 
@@ -25,11 +27,12 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
       id,
       name: trimmed,
       color: newRoleColor,
-      curve: Array(10).fill(1),
+      curve: Array(HOURS.length).fill(1),
       serviceRate: 20,
       minStaff: 0,
       demandWeight: 1,
       requiredDuringOpen: false,
+      hourlyWage: null,
     };
 
     commit([...roles, newRole], {
@@ -97,6 +100,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                 />
                 <input
                   className="staff-role-name-input"
+                  aria-label={`Role name for ${role.name || "staff role"}`}
                   value={role.name}
                   onChange={(e) =>
                     handleRoleNameChange(role.id, e.target.value)
@@ -184,6 +188,23 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                 />
               </label>
 
+              <label className="staff-role-peak-label">
+                Wage / hr
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="staff-role-peak-input"
+                  placeholder="Optional"
+                  value={role.hourlyWage ?? ""}
+                  onChange={(e) =>
+                    handleRoleAccuracyChange(role.id, {
+                      hourlyWage: normalizeHourlyWage(e.target.value),
+                    })
+                  }
+                />
+              </label>
+
               <label className="staff-role-check">
                 <input
                   type="checkbox"
@@ -209,6 +230,8 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                         : "")
                     }
                     style={{ backgroundColor: color }}
+                    aria-label={`Set ${role.name} colour to ${color}`}
+                    aria-pressed={role.color === color}
                     onClick={() => handleRoleColorChange(role.id, color)}
                   />
                 ))}
@@ -234,6 +257,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
             type="text"
             className="staff-add-input"
             placeholder="e.g. Supervisor"
+            aria-label="New role name"
             value={newRoleName}
             onChange={(e) => setNewRoleName(e.target.value)}
           />
@@ -245,6 +269,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
             className="staff-add-peak-input"
             value={newRolePeak}
             onChange={(e) => setNewRolePeak(e.target.value)}
+            aria-label="New role max staff at peak"
             title="Max staff at your busiest hour"
           />
 
@@ -271,6 +296,8 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                     : "")
                 }
                 style={{ backgroundColor: color }}
+                aria-label={`Set new role colour to ${color}`}
+                aria-pressed={newRoleColor === color}
                 onClick={() => setNewRoleColor(color)}
               />
             ))}

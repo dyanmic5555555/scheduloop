@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { getFriendlyAuthErrorMessage } from "../utils/authErrors";
 
 function SignupPage() {
   const { signup } = useAuth();
@@ -21,7 +22,12 @@ function SignupPage() {
       navigate("/onboarding");
     } catch (err) {
       console.error(err);
-      setError("Sign up failed. Please check your details and try again.");
+      setError(
+        getFriendlyAuthErrorMessage(
+          err,
+          "Sign up failed. Please check your details and try again."
+        )
+      );
     } finally {
       setIsSubmitting(false);
     }

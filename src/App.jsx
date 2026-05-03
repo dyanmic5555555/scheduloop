@@ -19,15 +19,23 @@ function RouteError({ message }) {
       <div className="route-error-card">
         <h1>Something went wrong</h1>
         <p>{message}</p>
+        <button
+          type="button"
+          className="route-error-button"
+          onClick={() => window.location.reload()}
+        >
+          Try again
+        </button>
       </div>
     </div>
   );
 }
 
-function RouteFallback() {
+function RouteFallback({ message = "Loading Scheduloop..." }) {
   return (
     <div className="app route-loading-screen" aria-label="Loading">
       <div className="route-loading-spinner" />
+      <p className="route-loading-text">{message}</p>
     </div>
   );
 }
@@ -42,7 +50,9 @@ function ProtectedRoute({ children }) {
 
 function ProfileReadyRoute({ children }) {
   const { loadingProfile, profileError } = useBusinessProfile();
-  if (loadingProfile) return null;
+  if (loadingProfile) {
+    return <RouteFallback message="Loading your business profile..." />;
+  }
   if (profileError) return <RouteError message={profileError} />;
   return children;
 }

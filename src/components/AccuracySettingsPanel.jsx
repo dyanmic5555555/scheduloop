@@ -3,6 +3,7 @@ import {
   normalizePositiveNumber,
   normalizeStaffCount,
 } from "../utils/staffing";
+import { normalizeHourlyWage } from "../utils/labourCost";
 
 function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
   const rules = normalizeOperatingRules(operatingRules);
@@ -86,6 +87,22 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
               onChange={(e) =>
                 patchRules({
                   minTotalStaff: normalizeStaffCount(e.target.value),
+                })
+              }
+            />
+          </label>
+
+          <label className="accuracy-field">
+            Average hourly wage (£)
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={rules.averageHourlyWage ?? ""}
+              placeholder="Optional"
+              onChange={(e) =>
+                patchRules({
+                  averageHourlyWage: normalizeHourlyWage(e.target.value),
                 })
               }
             />

@@ -6,41 +6,12 @@ import {
   toLocalDateKey,
 } from "./schedule.js";
 import { CSV_DEMAND_MODEL_VERSION } from "./demandModel.js";
+import {
+  detectDemandColumns,
+  serializeDetectedDemandColumns,
+} from "./roleDemand.js";
 
 export const MAX_CSV_BYTES = 1024 * 1024;
-
-const DEMAND_COLUMN_PATTERNS = [
-  {
-    type: "count",
-    unitLabel: "demand units",
-    patterns: [
-      /^orders?$/,
-      /^order[_\s-]?count$/,
-      /^transactions?$/,
-      /^sales[_\s-]?count$/,
-      /^covers?$/,
-      /^check[_\s-]?ins?$/,
-      /^bookings?$/,
-      /^appointments?$/,
-      /^customers?$/,
-      /^guests?$/,
-      /^items?$/,
-      /^quantity$/,
-      /^qty$/,
-      /^units?$/,
-    ],
-  },
-  {
-    type: "money",
-    unitLabel: "revenue units",
-    patterns: [/^revenue$/, /^sales$/, /^amount$/, /^total$/, /^price$/],
-  },
-  {
-    type: "duration",
-    unitLabel: "minutes",
-    patterns: [/^duration$/, /^minutes?$/, /^service[_\s-]?minutes$/],
-  },
-];
 
 const ACTUAL_STAFF_PATTERNS = [
   /^staff$/,
@@ -134,31 +105,6 @@ function findActualStaffColumn(headers) {
   });
 }
 
-function findDemandMetric(headers) {
-  for (const candidate of DEMAND_COLUMN_PATTERNS) {
-    const index = headers.findIndex((header) => {
-      const normalized = normalizeHeader(header);
-      return candidate.patterns.some((pattern) => pattern.test(normalized));
-    });
-
-    if (index !== -1) {
-      return {
-        index,
-        column: headers[index],
-        type: candidate.type,
-        unitLabel: candidate.unitLabel,
-      };
-    }
-  }
-
-  return {
-    index: -1,
-    column: null,
-    type: "events",
-    unitLabel: "events",
-  };
-}
-
 function parsePositiveNumber(value) {
   const cleaned = String(value ?? "").replace(/[^0-9.-]/g, "");
   const num = Number(cleaned);
@@ -179,10 +125,14 @@ function normalizeCounts(counts) {
   return counts.map((count) => count / max);
 }
 
-function createDateBucket(date, slotCount) {
+function createDateBucket(date, slotCount, sourceKeys = []) {
   return {
+    dateKey: toLocalDateKey(date),
     weekday: date.getDay(),
     demandUnits: Array(slotCount).fill(0),
+    demandUnitsBySource: Object.fromEntries(
+      sourceKeys.map((key) => [key, Array(slotCount).fill(0)])
+    ),
     actualStaffSums: Array(slotCount).fill(0),
     actualStaffCounts: Array(slotCount).fill(0),
   };
@@ -208,6 +158,19 @@ function averageDemandByObservedDay(buckets, slotCount) {
   );
 }
 
+function averageSourceDemandByObservedDay(buckets, slotCount, sourceKey) {
+  if (buckets.length === 0) return Array(slotCount).fill(0);
+
+  return Array.from({ length: slotCount }, (_, slotIndex) => {
+    const total = buckets.reduce(
+      (sum, bucket) =>
+        sum + (bucket.demandUnitsBySource?.[sourceKey]?.[slotIndex] || 0),
+      0
+    );
+    return total / buckets.length;
+  });
+}
+
 function averageActualStaffByObservedSlot(buckets, slotCount) {
   return Array.from({ length: slotCount }, (_, slotIndex) => {
     const observedStaff = buckets
@@ -230,6 +193,66 @@ function averageActualStaffByObservedSlot(buckets, slotCount) {
 
 function toWeekdayMap(values) {
   return Object.fromEntries(values.map((value, weekday) => [weekday, value]));
+}
+
+function createFallbackDemandMetric(detectedColumns) {
+  if (detectedColumns.general) return detectedColumns.general;
+
+  const firstSource = Object.values(detectedColumns.sources)[0];
+  if (firstSource) {
+    return {
+      ...firstSource,
+      column: `${firstSource.column} plus similar demand columns`,
+    };
+  }
+
+  return {
+    index: -1,
+    column: null,
+    type: "events",
+    unitLabel: "events",
+  };
+}
+
+function getGeneralDemandUnits(cols, detectedColumns) {
+  if (detectedColumns.general) {
+    return parsePositiveNumber(cols[detectedColumns.general.index]);
+  }
+
+  const sourceValues = Object.values(detectedColumns.sources)
+    .map((source) => parsePositiveNumber(cols[source.index]))
+    .filter((value) => value !== null);
+
+  if (sourceValues.length === 0) {
+    return Object.keys(detectedColumns.sources).length === 0 ? 1 : null;
+  }
+
+  // When no single general column exists, use the combined workload columns as
+  // a safe fallback so richer role-specific CSVs still produce a total curve.
+  return sourceValues.reduce((sum, value) => sum + value, 0);
+}
+
+function buildSourceDemandModel(dateBuckets, weekdayBuckets, source, slotCount) {
+  const fallbackUnits = averageSourceDemandByObservedDay(
+    dateBuckets,
+    slotCount,
+    source.key
+  );
+  const byWeekdayUnits = weekdayBuckets.map((buckets) =>
+    averageSourceDemandByObservedDay(buckets, slotCount, source.key)
+  );
+
+  return {
+    column: source.column,
+    type: source.type,
+    unitLabel: source.unitLabel,
+    roleHints: source.roleHints,
+    roleSpecific: !!source.roleSpecific,
+    fallback: normalizeCounts(fallbackUnits),
+    byWeekday: toWeekdayMap(byWeekdayUnits.map(normalizeCounts)),
+    fallbackUnits,
+    byWeekdayUnits: toWeekdayMap(byWeekdayUnits),
+  };
 }
 
 export function parseCsvDemand(
@@ -269,7 +292,9 @@ export function parseCsvDemand(
     );
   }
 
-  const demandMetric = findDemandMetric(headers);
+  const detectedColumns = detectDemandColumns(headers);
+  const demandMetric = createFallbackDemandMetric(detectedColumns);
+  const sourceKeys = Object.keys(detectedColumns.sources);
   const actualStaffIdx = findActualStaffColumn(headers);
   const dateBucketsByKey = new Map();
 
@@ -301,10 +326,7 @@ export function parseCsvDemand(
       continue;
     }
 
-    const demandUnits =
-      demandMetric.index === -1
-        ? 1
-        : parsePositiveNumber(cols[demandMetric.index]);
+    const demandUnits = getGeneralDemandUnits(cols, detectedColumns);
 
     if (!demandUnits) {
       invalidRows.push({ row: rowNumber, reason: "Invalid demand value" });
@@ -314,10 +336,18 @@ export function parseCsvDemand(
     const dateKey = toLocalDateKey(parsed);
     const bucket =
       dateBucketsByKey.get(dateKey) ||
-      createDateBucket(parsed, slotLabels.length);
+      createDateBucket(parsed, slotLabels.length, sourceKeys);
 
     dateBucketsByKey.set(dateKey, bucket);
     bucket.demandUnits[slotIndex] += demandUnits;
+
+    Object.values(detectedColumns.sources).forEach((source) => {
+      const sourceValue = parsePositiveNumber(cols[source.index]);
+      if (sourceValue !== null) {
+        bucket.demandUnitsBySource[source.key][slotIndex] += sourceValue;
+      }
+    });
+
     matchedRows += 1;
 
     if (actualStaffIdx !== -1 && cols.length > actualStaffIdx) {
@@ -351,6 +381,22 @@ export function parseCsvDemand(
   const actualStaffByWeekday = weekdayBuckets.map((buckets) =>
     averageActualStaffByObservedSlot(buckets, slotLabels.length)
   );
+  const demandSources = Object.fromEntries(
+    Object.entries(detectedColumns.sources).map(([key, source]) => [
+      key,
+      buildSourceDemandModel(dateBuckets, weekdayBuckets, source, slotLabels.length),
+    ])
+  );
+  const dailyDemandByDate = Object.fromEntries(
+    dateBuckets.map((bucket) => [
+      bucket.dateKey,
+      {
+        weekday: bucket.weekday,
+        demandUnits: bucket.demandUnits,
+        actualStaff: averageActualStaffByObservedSlot([bucket], slotLabels.length),
+      },
+    ])
+  );
 
   return {
     modelVersion: CSV_DEMAND_MODEL_VERSION,
@@ -365,7 +411,14 @@ export function parseCsvDemand(
       slotLabels.length
     ),
     actualStaffByWeekday: toWeekdayMap(actualStaffByWeekday),
-    demandMetric,
+    demandMetric: serializeDetectedDemandColumns({
+      general: demandMetric,
+      sources: {},
+    }).general,
+    demandColumns: serializeDetectedDemandColumns(detectedColumns),
+    demandSources,
+    hasRoleSpecificDemand: detectedColumns.hasRoleSpecificDemand,
+    dailyDemandByDate,
     rows: matchedRows,
     totalRows: rows.length - 1,
     skippedRows: invalidRows.length + outOfHoursRows,

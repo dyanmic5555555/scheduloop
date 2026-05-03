@@ -62,7 +62,7 @@ export function BusinessProfileProvider({ children }) {
         if (active) {
           setProfile(null);
           setProfileError(
-            "We could not load your business profile. Please try again."
+            "We could not load your business profile from Firestore. Please check your connection and try again. Your business data was not changed."
           );
         }
       } finally {

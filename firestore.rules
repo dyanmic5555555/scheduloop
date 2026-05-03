@@ -13,6 +13,12 @@ service cloud.firestore {
     function hasAllowedProfileKeys() {
       return request.resource.data.keys().hasOnly([
         'businessType',
+        'businessName',
+        'businessSubtype',
+        'location',
+        'customerPattern',
+        'businessRhythm',
+        'demandEstimates',
         'roles',
         'hours',
         'busyLevel',
@@ -20,6 +26,7 @@ service cloud.firestore {
         'csvDemand',
         'dayConfigs',
         'operatingRules',
+        'staffingFeedback',
         'ownerUid',
         'updatedAt'
       ]);
@@ -28,6 +35,12 @@ service cloud.firestore {
     function changesAllowedProfileKeysOnly() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         'businessType',
+        'businessName',
+        'businessSubtype',
+        'location',
+        'customerPattern',
+        'businessRhythm',
+        'demandEstimates',
         'roles',
         'hours',
         'busyLevel',
@@ -35,6 +48,7 @@ service cloud.firestore {
         'csvDemand',
         'dayConfigs',
         'operatingRules',
+        'staffingFeedback',
         'ownerUid',
         'updatedAt'
       ]);

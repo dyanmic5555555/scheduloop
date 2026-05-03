@@ -14,13 +14,57 @@ import {
   applyMinimumTotalStaff,
   calculateBacktestSummary,
   normalizeStaffCount,
+  runForecastBacktest,
 } from "../src/utils/staffing.js";
 import {
   CSV_DEMAND_MODEL_VERSION,
+  calculateForecastConfidence,
   getCsvBlendWeight,
+  getCsvDemandUnitsForRole,
+  getCsvTrustWeight,
   getDemandConfidence,
   isCurrentCsvDemandModel,
 } from "../src/utils/demandModel.js";
+import {
+  getAverageFeedbackCorrection,
+  getStaffingFeedback,
+  saveStaffingFeedback,
+} from "../src/utils/staffingFeedback.js";
+import {
+  calculateContextMultiplier,
+  getActiveContextLabels,
+  getContextAdjustmentSummary,
+  getDefaultDayContext,
+  hasActiveDayContext,
+  normaliseDayConfigs,
+  normaliseDayContext,
+} from "../src/utils/dayContext.js";
+import {
+  detectDemandColumns,
+  getDemandColumnForRole,
+} from "../src/utils/roleDemand.js";
+import {
+  calculateLabourCostEstimate,
+  normalizeHourlyWage,
+} from "../src/utils/labourCost.js";
+import {
+  calculateRotaGuidance,
+  formatSlotRange,
+} from "../src/utils/rotaGuidance.js";
+import {
+  canRequestPasswordReset,
+  getFriendlyAuthErrorMessage,
+} from "../src/utils/authErrors.js";
+import {
+  applyBusinessRhythmToCurve,
+  buildPeakStaffDefaults,
+  deriveBusyLevelFromDemandEstimates,
+  getDefaultRolesForBusinessProfile,
+  getOpeningHoursForDate,
+  normalizeBusinessProfileBasics,
+  normalizeDemandEstimates,
+  normalizeOpeningHours,
+} from "../src/utils/businessProfileSetup.js";
 
 const tests = [];
 
@@ -58,8 +102,8 @@ test("opening hours must close after they open", () => {
 test("active hour window slices expected hours", () => {
   const window = getActiveHourWindow({ open: "09:00", close: "12:00" });
   assert.deepEqual(window.activeHours, ["09:00", "10:00", "11:00", "12:00"]);
-  assert.equal(window.start, 1);
-  assert.equal(window.end, 4);
+  assert.equal(window.start, 4);
+  assert.equal(window.end, 7);
   assert.equal(window.isValid, true);
 });
 
@@ -94,6 +138,117 @@ test("weekday is calculated from local date key", () => {
   assert.equal(getWeekdayFromDateKey("2026-01-02"), 5);
 });
 
+test("business profile basics normalize older and partial profiles", () => {
+  assert.deepEqual(normalizeBusinessProfileBasics({ businessType: "cafe" }), {
+    businessName: "My business",
+    businessType: "cafe",
+    businessSubtype: "coffeeShop",
+    location: "",
+    customerPattern: "steady",
+    businessRhythm: "notSure",
+  });
+
+  assert.equal(
+    normalizeBusinessProfileBasics({
+      businessType: "not-valid",
+      businessSubtype: "not-valid",
+      customerPattern: "morningRush",
+    }).businessSubtype,
+    "commercialGym"
+  );
+});
+
+test("demand estimates keep skipped values optional", () => {
+  const estimates = normalizeDemandEstimates(
+    { unit: "covers", quiet: "", normal: "120", busy: "220" },
+    "cafe"
+  );
+
+  assert.deepEqual(estimates, {
+    unit: "covers",
+    quiet: null,
+    normal: 120,
+    busy: 220,
+  });
+  assert.equal(deriveBusyLevelFromDemandEstimates(estimates, "normal"), "busy");
+  assert.deepEqual(normalizeDemandEstimates({}, "gym"), {
+    unit: "checkIns",
+    quiet: null,
+    normal: null,
+    busy: null,
+  });
+});
+
+test("business rhythm applies a conservative curve adjustment", () => {
+  const baseCurve = Array(HOURS.length).fill(1);
+  const lunchCurve = applyBusinessRhythmToCurve(baseCurve, "lunch");
+  const normalCurve = applyBusinessRhythmToCurve(baseCurve, "notSure");
+
+  assert.equal(normalCurve[HOURS.indexOf("12:00")], 1);
+  assert.equal(lunchCurve[HOURS.indexOf("12:00")], 1.18);
+  assert.equal(lunchCurve[HOURS.indexOf("08:00")], 1);
+});
+
+test("opening hours support optional weekend differences", () => {
+  const hours = normalizeOpeningHours({
+    open: "06:00",
+    close: "18:00",
+    weekend: {
+      enabled: true,
+      open: "08:00",
+      close: "16:00",
+    },
+  });
+
+  assert.deepEqual(getOpeningHoursForDate(hours, "2026-01-02"), {
+    open: "06:00",
+    close: "18:00",
+  });
+  assert.deepEqual(getOpeningHoursForDate(hours, "2026-01-03"), {
+    open: "08:00",
+    close: "16:00",
+  });
+  assert.equal(
+    isOpeningHoursValid({ open: hours.weekend.close, close: hours.weekend.open }),
+    false
+  );
+});
+
+test("role defaults change safely by business type and subtype", () => {
+  const fullServiceRoles = getDefaultRolesForBusinessProfile({
+    businessType: "cafe",
+    businessSubtype: "fullServiceRestaurant",
+  });
+  const takeawayRoles = getDefaultRolesForBusinessProfile({
+    businessType: "cafe",
+    businessSubtype: "takeaway",
+  });
+  const commercialGymRoles = getDefaultRolesForBusinessProfile({
+    businessType: "gym",
+    businessSubtype: "commercialGym",
+  });
+
+  assert.equal(
+    fullServiceRoles.some((role) => role.id === "manager"),
+    true
+  );
+  assert.equal(
+    takeawayRoles.find((role) => role.id === "wait").requiredDuringOpen,
+    false
+  );
+  assert.equal(
+    commercialGymRoles.some((role) => role.id === "cleanerFloor"),
+    true
+  );
+  assert.equal(fullServiceRoles[0].curve.length, HOURS.length);
+  assert.deepEqual(buildPeakStaffDefaults(fullServiceRoles), {
+    barista: 2,
+    kitchen: 3,
+    wait: 4,
+    manager: 1,
+  });
+});
+
 test("CSV parser supports quoted commas", () => {
   const rows = parseCsv('timestamp,note\n"2026-01-02T09:15:00","hello, world"');
   assert.deepEqual(rows, [
@@ -119,7 +274,7 @@ test("CSV demand reports skipped rows", () => {
   assert.equal(demand.totalRows, 4);
   assert.equal(demand.skippedRows, 2);
   assert.equal(demand.invalidRows[0].reason, "Invalid timestamp");
-  assert.equal(demand.fallback[1], 1);
+  assert.equal(demand.fallback[demand.slotLabels.indexOf("09:00")], 1);
 });
 
 test("CSV demand uses weighted demand columns and actual staff", () => {
@@ -143,6 +298,58 @@ test("CSV demand uses weighted demand columns and actual staff", () => {
   assert.equal(demand.actualStaffRows, 2);
   assert.equal(demand.actualStaffFallback[0], 2);
   assert.equal(demand.actualStaffFallback[1], 3);
+});
+
+test("CSV demand detects role-specific columns", () => {
+  const headers = [
+    "timestamp",
+    "drink_orders",
+    "food_orders",
+    "customers",
+    "staff",
+  ];
+  const detected = detectDemandColumns(headers);
+
+  assert.equal(detected.hasRoleSpecificDemand, true);
+  assert.equal(
+    getDemandColumnForRole({ id: "barista", name: "Barista" }, detected).key,
+    "drinkOrders"
+  );
+  assert.equal(
+    getDemandColumnForRole({ id: "kitchen", name: "Kitchen" }, detected).key,
+    "foodOrders"
+  );
+  assert.equal(
+    getDemandColumnForRole({ id: "wait", name: "Wait Staff" }, detected).key,
+    "customers"
+  );
+});
+
+test("CSV demand stores role-specific demand curves", () => {
+  const csv = [
+    "timestamp,drink_orders,food_orders,customers,staff",
+    "2026-01-02T09:00:00,10,4,12,2",
+    "2026-01-02T09:30:00,20,8,18,3",
+  ].join("\n");
+
+  const demand = parseCsvDemand(csv, {
+    openingHours: { open: "09:00", close: "10:00" },
+    intervalMinutes: 30,
+    now: () => new Date("2026-01-02T12:00:00Z"),
+  });
+
+  assert.equal(demand.hasRoleSpecificDemand, true);
+  assert.equal(demand.demandSources.drinkOrders.fallbackUnits[0], 10);
+  assert.equal(
+    getCsvDemandUnitsForRole({
+      csvDemand: demand,
+      role: { id: "barista", name: "Barista" },
+      weekday: 5,
+      slotIndex: 1,
+      useWeekdayData: true,
+    }),
+    20
+  );
 });
 
 test("CSV demand averages units by observed business day", () => {
@@ -264,6 +471,75 @@ test("minimum total staff fills a required role", () => {
   assert.equal(adjusted.total, 2);
 });
 
+test("day context defaults and invalid values stay safe", () => {
+  const defaultContext = getDefaultDayContext();
+  assert.equal(hasActiveDayContext(defaultContext), false);
+  assert.equal(calculateContextMultiplier(defaultContext), 1);
+
+  const context = normaliseDayContext({
+    promotion: "yes",
+    payday: true,
+    weather: {
+      enabled: true,
+      condition: "hail",
+      temperatureC: "not a number",
+    },
+  });
+
+  assert.equal(context.promotion, false);
+  assert.equal(context.payday, true);
+  assert.equal(context.weather.condition, "normal");
+  assert.equal(context.weather.temperatureC, null);
+  assert.equal(hasActiveDayContext(context), true);
+});
+
+test("day context multipliers compound and clamp", () => {
+  assert.equal(
+    calculateContextMultiplier({
+      payday: true,
+      localEvent: true,
+    }),
+    1.296
+  );
+
+  assert.equal(
+    calculateContextMultiplier({
+      promotion: true,
+      localEvent: true,
+      sportEvent: true,
+      payday: true,
+      bankHoliday: true,
+      weather: { enabled: true, condition: "hot" },
+    }),
+    1.5
+  );
+});
+
+test("day context summaries explain active assumptions", () => {
+  const summary = getContextAdjustmentSummary({
+    roadworks: true,
+    weather: { enabled: true, condition: "rain" },
+  });
+
+  assert.equal(summary.multiplier, 0.855);
+  assert.equal(summary.percentChange, -15);
+  assert.deepEqual(summary.labels, ["Roadworks nearby: -10%", "Rain: -5%"]);
+  assert.deepEqual(getActiveContextLabels({ bankHoliday: true }), [
+    "Bank holiday",
+  ]);
+});
+
+test("day config normalization preserves old day type-only entries", () => {
+  const configs = normaliseDayConfigs({
+    "2026-05-01": { dayType: "busy" },
+    "2026-05-02": { dayType: "event", context: { payday: true } },
+  });
+
+  assert.equal(configs["2026-05-01"].dayType, "busy");
+  assert.equal("context" in configs["2026-05-01"], false);
+  assert.equal(configs["2026-05-02"].context.payday, true);
+});
+
 test("backtest summary compares predictions with actual staff", () => {
   const summary = calculateBacktestSummary(
     [
@@ -284,6 +560,84 @@ test("backtest summary compares predictions with actual staff", () => {
   assert.equal(summary.overStaffedBlocks, 1);
 });
 
+test("manager feedback stores and averages corrections", () => {
+  const feedback = saveStaffingFeedback([null], {
+    date: "2026-01-02",
+    hour: "09:00",
+    roleId: "barista",
+    predictedStaff: 2,
+    actualStaff: 3,
+    feedback: "understaffed",
+  });
+
+  assert.equal(feedback.length, 1);
+  assert.equal(
+    getAverageFeedbackCorrection({
+      weekday: 5,
+      hour: "09:00",
+      roleId: "barista",
+      feedbackEntries: feedback,
+    }),
+    1
+  );
+
+  const neutralFeedback = saveStaffingFeedback(feedback, {
+    date: "2026-01-09",
+    hour: "09:00",
+    roleId: "barista",
+    predictedStaff: 2,
+    actualStaff: 2,
+    feedback: "right",
+  });
+
+  assert.equal(getStaffingFeedback({ staffingFeedback: [null] }).length, 0);
+  assert.equal(
+    getAverageFeedbackCorrection({
+      weekday: 5,
+      hour: "09:00",
+      roleId: "barista",
+      feedbackEntries: [null, ...neutralFeedback, { date: "not-a-date" }],
+    }),
+    0.5
+  );
+});
+
+test("forecast backtest returns a safe accuracy summary", () => {
+  const dailyDemandByDate = {};
+
+  for (let day = 1; day <= 8; day += 1) {
+    const date = `2026-01-${String(day).padStart(2, "0")}`;
+    dailyDemandByDate[date] = {
+      weekday: new Date(`${date}T12:00:00`).getDay(),
+      demandUnits: day === 8 ? [Number.NaN, 20 + day] : [10 + day, 20 + day],
+      actualStaff: day === 8 ? [Number.NaN, 2] : [1, 2],
+    };
+  }
+
+  const result = runForecastBacktest({
+    historicalData: {
+      slotLabels: ["09:00", "09:30"],
+      intervalMinutes: 30,
+      dailyDemandByDate,
+    },
+    roles: [
+      {
+        id: "barista",
+        name: "Barista",
+        curve: [1, 1],
+        serviceRate: 20,
+        minStaff: 1,
+        demandWeight: 1,
+        requiredDuringOpen: true,
+      },
+    ],
+    businessProfile: { peakStaff: { barista: 3 } },
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.sampleSize, 8);
+});
+
 test("CSV blend weight trusts stronger weekday samples more", () => {
   assert.equal(
     getCsvBlendWeight({
@@ -291,8 +645,9 @@ test("CSV blend weight trusts stronger weekday samples more", () => {
       hasWeekdayData: true,
       weekdaySampleCount: 6,
       observedDays: 20,
+      totalRows: 100,
     }),
-    0.9
+    0.65
   );
   assert.equal(
     getCsvBlendWeight({
@@ -300,6 +655,7 @@ test("CSV blend weight trusts stronger weekday samples more", () => {
       hasWeekdayData: true,
       weekdaySampleCount: 1,
       observedDays: 20,
+      totalRows: 100,
     }),
     0.5
   );
@@ -309,13 +665,23 @@ test("CSV blend weight trusts stronger weekday samples more", () => {
       hasWeekdayData: false,
       weekdaySampleCount: 0,
       observedDays: 7,
+      totalRows: 100,
     }),
     0.35
+  );
+  assert.equal(
+    getCsvTrustWeight({
+      usableCsvDays: 90,
+      weekdaySampleSize: 8,
+      totalRows: 1000,
+      hasWeekdayData: true,
+    }),
+    0.9
   );
 });
 
 test("demand confidence labels weak and strong uploaded data", () => {
-  assert.equal(getDemandConfidence(null, 5).label, "Preset");
+  assert.equal(getDemandConfidence(null, 5).label, "Low");
   assert.equal(
     getDemandConfidence({ rows: 20, observedDays: 3, weekdaySampleCounts: [] }, 5)
       .label,
@@ -323,10 +689,116 @@ test("demand confidence labels weak and strong uploaded data", () => {
   );
   assert.equal(
     getDemandConfidence(
-      { rows: 100, observedDays: 30, weekdaySampleCounts: [0, 0, 0, 0, 0, 6] },
+      {
+        rows: 100,
+        observedDays: 30,
+        weekdaySampleCounts: [0, 0, 0, 0, 0, 6],
+        hasRoleSpecificDemand: true,
+      },
       5
     ).label,
     "High"
+  );
+  assert.equal(
+    calculateForecastConfidence({
+      usableCsvDays: 30,
+      weekdaySampleSize: 6,
+      hasRoleSpecificDemand: true,
+      hasStaffHistory: true,
+      hasManagerFeedback: true,
+      hasDayContext: true,
+    }).level,
+    "High"
+  );
+});
+
+test("rota guidance identifies peak and quiet cover windows", () => {
+  const guidance = calculateRotaGuidance({
+    chartData: [
+      { hour: "09:00", total: 1, barista: 1, kitchen: 0 },
+      { hour: "09:30", total: 2, barista: 1, kitchen: 1 },
+      { hour: "10:00", total: 5, barista: 3, kitchen: 2 },
+      { hour: "10:30", total: 5, barista: 3, kitchen: 2 },
+      { hour: "11:00", total: 2, barista: 1, kitchen: 1 },
+    ],
+    roles: [
+      { id: "barista", name: "Barista" },
+      { id: "kitchen", name: "Kitchen" },
+    ],
+    intervalMinutes: 30,
+    minTotalStaff: 1,
+  });
+
+  assert.equal(guidance.strongestCoverLabel, "10:00-11:00");
+  assert.equal(guidance.quietCoverLabel, "09:00-10:00");
+  assert.equal(
+    guidance.roleAdvice.includes(
+      "Barista demand peaks at 3 staff around 10:00-11:00."
+    ),
+    true
+  );
+  assert.equal(guidance.warnings.length, 1);
+});
+
+test("slot range formatting includes the final forecast block", () => {
+  assert.equal(formatSlotRange("12:00", "13:30", 30), "12:00-14:00");
+});
+
+test("labour cost is hidden when wages are missing", () => {
+  const estimate = calculateLabourCostEstimate({
+    chartData: [{ hour: "09:00", total: 2, barista: 2 }],
+    roles: [{ id: "barista", name: "Barista" }],
+    intervalMinutes: 60,
+  });
+
+  assert.equal(estimate.hasWage, false);
+  assert.equal(estimate.estimatedCost, null);
+  assert.equal(estimate.totalStaffHours, 2);
+});
+
+test("labour cost uses average wage as a safe default", () => {
+  const estimate = calculateLabourCostEstimate({
+    chartData: [
+      { hour: "09:00", total: 2, barista: 2 },
+      { hour: "10:00", total: 3, barista: 3 },
+    ],
+    roles: [{ id: "barista", name: "Barista" }],
+    intervalMinutes: 60,
+    averageHourlyWage: 10,
+  });
+
+  assert.equal(estimate.hasWage, true);
+  assert.equal(estimate.estimatedCost, 50);
+  assert.equal(estimate.coveredStaffHours, 5);
+});
+
+test("labour cost can mix role wages with a fallback wage", () => {
+  const estimate = calculateLabourCostEstimate({
+    chartData: [{ hour: "09:00", total: 3, barista: 2, kitchen: 1 }],
+    roles: [
+      { id: "barista", name: "Barista", hourlyWage: 12 },
+      { id: "kitchen", name: "Kitchen" },
+    ],
+    intervalMinutes: 60,
+    averageHourlyWage: 10,
+  });
+
+  assert.equal(estimate.estimatedCost, 34);
+  assert.equal(estimate.rolesWithWages, 1);
+});
+
+test("hourly wage normalization treats blank and invalid values as missing", () => {
+  assert.equal(normalizeHourlyWage(""), null);
+  assert.equal(normalizeHourlyWage("-1"), null);
+  assert.equal(normalizeHourlyWage("10.555"), 10.56);
+});
+
+test("auth helpers return friendly messages and validate reset email", () => {
+  assert.equal(canRequestPasswordReset("owner@example.com"), true);
+  assert.equal(canRequestPasswordReset("not-an-email"), false);
+  assert.equal(
+    getFriendlyAuthErrorMessage({ code: "auth/email-already-in-use" }),
+    "An account already exists for this email. Try logging in instead."
   );
 });
 

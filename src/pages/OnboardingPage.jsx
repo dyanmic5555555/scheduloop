@@ -1,68 +1,191 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useBusinessProfile } from "../business/BusinessProfileContext";
 import {
   DEFAULT_OPERATING_RULES,
-  getBusinessPresetRoles,
   normalizeRolesForAccuracy,
 } from "../config/businessPresets";
 import { HOURS, isOpeningHoursValid } from "../utils/schedule";
-import { normalizeStaffCount } from "../utils/staffing";
+import { normalizePositiveNumber, normalizeStaffCount } from "../utils/staffing";
+import {
+  BUSINESS_RHYTHM_OPTIONS,
+  CUSTOMER_PATTERN_OPTIONS,
+  applyBusinessRhythmToRoles,
+  buildPeakStaffDefaults,
+  deriveBusyLevelFromDemandEstimates,
+  getBusinessRhythmForCustomerPattern,
+  getBusinessSubtypeOptions,
+  getDefaultBusinessSubtype,
+  getDefaultRolesForBusinessProfile,
+  getDemandUnitLabel,
+  getDemandUnitOptions,
+  normalizeBusinessProfileBasics,
+  normalizeDemandEstimates,
+  normalizeOpeningHours,
+} from "../utils/businessProfileSetup";
 
 const COLOR_OPTIONS = ["#4f8cff", "#3bd68b", "#ff776f", "#facc15", "#a855f7"];
-const DEFAULT_CURVE = Array(10).fill(1);
+const STEP_LABELS = [
+  "Basics",
+  "Hours",
+  "Roles",
+  "Staffing",
+  "Accuracy",
+  "Review",
+];
+const STEP_DESCRIPTIONS = [
+  "The essentials that set the right starting assumptions.",
+  "The trading window Scheduloop should plan around.",
+  "The roles you normally schedule for this business.",
+  "The cover rules that keep the forecast practical.",
+  "The demand pattern behind the first forecast.",
+  "The profile Scheduloop will use to generate the plan.",
+];
+
+function makeRoleId(name) {
+  return `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+}
+
+function getBusinessTypeLabel(businessType) {
+  return businessType === "cafe" ? "Cafe / Restaurant" : "Gym / Fitness";
+}
+
+function getSelectedLabel(options, value) {
+  return options.find((option) => option.value === value)?.label || value;
+}
+
+function createCustomRole(name, color) {
+  return {
+    id: makeRoleId(name),
+    name,
+    description: "Custom role for this business.",
+    color,
+    curve: Array(HOURS.length).fill(1),
+    serviceRate: 20,
+    minStaff: 0,
+    maxStaff: 0,
+    demandWeight: 1,
+    demandShare: 1,
+    requiredDuringOpen: false,
+    preferredDemandSource: "",
+    hourlyWage: null,
+  };
+}
+
+function getProfileSaveErrorMessage(error) {
+  if (error?.code === "permission-denied") {
+    return "Scheduloop could not save because the database permissions need updating for this profile version.";
+  }
+
+  if (error?.code === "unavailable") {
+    return "Scheduloop could not reach Firestore. Check the connection and try again.";
+  }
+
+  return "We could not save your business profile. Please try again.";
+}
 
 function OnboardingPage() {
   const navigate = useNavigate();
   const { profile, saveProfile } = useBusinessProfile();
-  const initialBusinessType = profile?.businessType || "gym";
+  const initialBasics = normalizeBusinessProfileBasics(profile || {});
+  const initialOpeningHours = normalizeOpeningHours(profile?.hours);
+  const initialDemandEstimates = normalizeDemandEstimates(
+    profile?.demandEstimates,
+    initialBasics.businessType
+  );
   const initialRoles =
     profile?.roles && profile.roles.length > 0
       ? normalizeRolesForAccuracy(profile.roles)
-      : getBusinessPresetRoles(initialBusinessType);
+      : getDefaultRolesForBusinessProfile(initialBasics);
 
   const [step, setStep] = useState(0);
-  const [businessType, setBusinessType] = useState(initialBusinessType);
+  const [businessName, setBusinessName] = useState(
+    initialBasics.businessName === "My business"
+      ? ""
+      : initialBasics.businessName
+  );
+  const [businessType, setBusinessType] = useState(initialBasics.businessType);
+  const [businessSubtype, setBusinessSubtype] = useState(
+    initialBasics.businessSubtype
+  );
+  const [location, setLocation] = useState(initialBasics.location);
+  const [customerPattern, setCustomerPattern] = useState(
+    initialBasics.customerPattern
+  );
+  const [businessRhythm, setBusinessRhythm] = useState(
+    initialBasics.businessRhythm
+  );
   const [roles, setRoles] = useState(initialRoles);
-  const [openingHours, setOpeningHours] = useState({
-    open: profile?.hours?.open || "09:00",
-    close: profile?.hours?.close || "17:00",
-  });
+  const [openingHours, setOpeningHours] = useState(initialOpeningHours);
+  const [demandEstimates, setDemandEstimates] = useState(
+    initialDemandEstimates
+  );
   const [busyLevel, setBusyLevel] = useState(profile?.busyLevel || "normal");
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleColor, setNewRoleColor] = useState(COLOR_OPTIONS[0]);
-  const [peakStaff, setPeakStaff] = useState(profile?.peakStaff || {});
+  const [peakStaff, setPeakStaff] = useState(() =>
+    buildPeakStaffDefaults(initialRoles, profile?.peakStaff || {})
+  );
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const openingHoursValid = isOpeningHoursValid(openingHours);
+  const subtypeOptions = getBusinessSubtypeOptions(businessType);
+  const demandUnitOptions = getDemandUnitOptions(businessType);
+  const weekdayHoursValid = isOpeningHoursValid(openingHours);
+  const weekendHoursValid =
+    !openingHours.weekend.enabled ||
+    isOpeningHoursValid(openingHours.weekend);
+  const openingHoursValid = weekdayHoursValid && weekendHoursValid;
+  const safeDemandEstimates = useMemo(
+    () => normalizeDemandEstimates(demandEstimates, businessType),
+    [demandEstimates, businessType]
+  );
+  const demandUnitLabel = getDemandUnitLabel(
+    businessType,
+    safeDemandEstimates.unit
+  );
+  const totalPeakStaff = useMemo(
+    () =>
+      Object.values(peakStaff).reduce(
+        (sum, value) => sum + normalizeStaffCount(value),
+        0
+      ),
+    [peakStaff]
+  );
+  const progressPercent = ((step + 1) / STEP_LABELS.length) * 100;
+
+  const resetRolesForProfile = (nextType, nextSubtype) => {
+    const nextRoles = getDefaultRolesForBusinessProfile({
+      businessType: nextType,
+      businessSubtype: nextSubtype,
+    });
+    setRoles(nextRoles);
+    setPeakStaff(buildPeakStaffDefaults(nextRoles, peakStaff));
+  };
 
   const handleBusinessTypeSelect = (type) => {
+    const nextSubtype = getDefaultBusinessSubtype(type);
     setBusinessType(type);
-    const presetRoles = getBusinessPresetRoles(type);
-    setRoles(presetRoles);
-    const defaults = {};
-    presetRoles.forEach((role) => {
-      defaults[role.id] = peakStaff[role.id] ?? 1;
-    });
-    setPeakStaff(defaults);
+    setBusinessSubtype(nextSubtype);
+    setDemandEstimates(normalizeDemandEstimates({}, type));
+    resetRolesForProfile(type, nextSubtype);
+  };
+
+  const handleBusinessSubtypeChange = (value) => {
+    setBusinessSubtype(value);
+    resetRolesForProfile(businessType, value);
+  };
+
+  const handleCustomerPatternChange = (value) => {
+    setCustomerPattern(value);
+    setBusinessRhythm(getBusinessRhythmForCustomerPattern(value));
   };
 
   const handleAddRole = () => {
     const trimmed = newRoleName.trim();
     if (!trimmed) return;
 
-    const newRole = {
-      id: `${trimmed.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
-      name: trimmed,
-      color: newRoleColor,
-      curve: DEFAULT_CURVE,
-      serviceRate: 20,
-      minStaff: 0,
-      demandWeight: 1,
-      requiredDuringOpen: false,
-    };
-
+    const newRole = createCustomRole(trimmed, newRoleColor);
     setRoles((prev) => [...prev, newRole]);
     setPeakStaff((prev) => ({
       ...prev,
@@ -80,6 +203,12 @@ function OnboardingPage() {
     });
   };
 
+  const handleRolePatch = (roleId, patch) => {
+    setRoles((prev) =>
+      prev.map((role) => (role.id === roleId ? { ...role, ...patch } : role))
+    );
+  };
+
   const handlePeakStaffChange = (roleId, value) => {
     setPeakStaff((prev) => ({
       ...prev,
@@ -87,19 +216,37 @@ function OnboardingPage() {
     }));
   };
 
+  const handleDemandEstimateChange = (key, value) => {
+    setDemandEstimates((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
   const handleFinish = async () => {
     setSaveError("");
     setIsSaving(true);
 
+    const normalizedOpeningHours = normalizeOpeningHours(openingHours);
+    const normalizedDemandEstimates = normalizeDemandEstimates(
+      demandEstimates,
+      businessType
+    );
+    const rolesForForecast = applyBusinessRhythmToRoles(roles, businessRhythm);
     const businessProfile = {
+      businessName: businessName.trim() || "My business",
       businessType,
-      roles,
-      hours: {
-        open: openingHours.open,
-        close: openingHours.close,
-        hoursList: HOURS,
-      },
-      busyLevel,
+      businessSubtype,
+      location: location.trim(),
+      customerPattern,
+      businessRhythm,
+      demandEstimates: normalizedDemandEstimates,
+      roles: rolesForForecast,
+      hours: normalizedOpeningHours,
+      busyLevel: deriveBusyLevelFromDemandEstimates(
+        normalizedDemandEstimates,
+        busyLevel
+      ),
       peakStaff,
       operatingRules: profile?.operatingRules || DEFAULT_OPERATING_RULES,
     };
@@ -109,21 +256,22 @@ function OnboardingPage() {
       navigate("/");
     } catch (err) {
       console.error(err);
-      setSaveError("We could not save your business profile. Please try again.");
+      setSaveError(getProfileSaveErrorMessage(err));
     } finally {
       setIsSaving(false);
     }
   };
 
   const canGoNext =
-    (step === 0 && businessType) ||
-    (step === 1 && roles.length > 0) ||
-    (step === 2 && openingHoursValid) ||
-    step === 3 ||
-    step === 4;
+    (step === 0 && businessName.trim() && businessType) ||
+    (step === 1 && openingHoursValid) ||
+    (step === 2 && roles.length > 0) ||
+    (step === 3 && roles.length > 0) ||
+    step === 4 ||
+    step === 5;
 
   const goNext = () => {
-    if (step === 4) {
+    if (step === STEP_LABELS.length - 1) {
       handleFinish();
     } else if (canGoNext) {
       setStep((s) => s + 1);
@@ -135,56 +283,92 @@ function OnboardingPage() {
   };
 
   return (
-    <div className="app auth-screen">
-      <div className="auth-card onboarding-card">
+    <div className="app auth-screen onboarding-screen">
+      <div className="auth-card onboarding-card onboarding-card-wide">
         <div className="onboarding-header">
-          <h1>Set up your business</h1>
-          <p className="subtitle">
-            We&apos;ll use these answers to generate your Shape of the Day.
-          </p>
+          <div className="onboarding-header-copy">
+            <p className="section-kicker">Scheduloop setup</p>
+            <h1>Build your operating profile</h1>
+            <p className="subtitle">
+              Set the hours, roles, and demand patterns Scheduloop will use for
+              your first forecast. You can refine everything later.
+            </p>
+          </div>
+
+          <div className="onboarding-header-panel" aria-live="polite">
+            <span>
+              Step {step + 1} of {STEP_LABELS.length}
+            </span>
+            <strong>{STEP_LABELS[step]}</strong>
+            <p>{STEP_DESCRIPTIONS[step]}</p>
+          </div>
         </div>
 
-        <div className="onboarding-steps">
-          {["Business", "Roles", "Hours", "Busy level", "Peak staff"].map(
-            (label, index) => (
-              <div
-                key={label}
-                className={
-                  "onboarding-step" +
-                  (index === step ? " active" : "") +
-                  (index < step ? " done" : "")
-                }
-              >
-                <div className="onboarding-step-dot" />
-                <span className="onboarding-step-label">{label}</span>
-              </div>
-            )
-          )}
+        <div
+          className="onboarding-progress"
+          aria-hidden="true"
+        >
+          <span style={{ width: `${progressPercent}%` }} />
+        </div>
+
+        <div className="onboarding-steps" role="list">
+          {STEP_LABELS.map((label, index) => (
+            <div
+              key={label}
+              role="listitem"
+              aria-current={index === step ? "step" : undefined}
+              className={
+                "onboarding-step" +
+                (index === step ? " active" : "") +
+                (index < step ? " done" : "")
+              }
+            >
+              <div className="onboarding-step-dot">{index + 1}</div>
+              <span className="onboarding-step-label">{label}</span>
+            </div>
+          ))}
         </div>
 
         <div className="onboarding-body">
           {step === 0 && (
-            <div>
-              <h2 className="onboarding-title">What type of business is this?</h2>
-              <p className="onboarding-text">
-                We&apos;ll start you with a default pattern for your industry.
-              </p>
+            <div className="onboarding-section">
+              <div className="onboarding-section-header">
+                <h2 className="onboarding-title">Business basics</h2>
+                <p className="onboarding-text">
+                  Tell Scheduloop what kind of business this is so the first
+                  forecast starts from sensible assumptions.
+                </p>
+              </div>
+
+              <div className="onboarding-field-grid">
+                <label className="onboarding-field">
+                  Business name
+                  <span className="field-hint">
+                    Shown in your saved operating profile.
+                  </span>
+                  <input
+                    type="text"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    placeholder="e.g. Riverside Coffee"
+                  />
+                </label>
+
+                <label className="onboarding-field">
+                  Town or city
+                  <span className="field-hint">
+                    Optional, useful context for managers.
+                  </span>
+                  <input
+                    type="text"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Optional"
+                  />
+                </label>
+              </div>
 
               <div className="business-type-grid">
-                <button
-                  type="button"
-                  onClick={() => handleBusinessTypeSelect("gym")}
-                  className={
-                    "business-type-card" +
-                    (businessType === "gym" ? " selected" : "")
-                  }
-                >
-                  <span className="business-type-title">Gym / Fitness</span>
-                  <span className="business-type-sub">
-                    Check-ins, classes, peak hours.
-                  </span>
-                </button>
-
                 <button
                   type="button"
                   onClick={() => handleBusinessTypeSelect("cafe")}
@@ -193,50 +377,240 @@ function OnboardingPage() {
                     (businessType === "cafe" ? " selected" : "")
                   }
                 >
+                  <span className="business-type-eyebrow">Food and drink</span>
                   <span className="business-type-title">Cafe / Restaurant</span>
                   <span className="business-type-sub">
-                    Coffee rushes, lunch and evening service.
+                    Built around orders, covers, service peaks, and floor cover.
                   </span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBusinessTypeSelect("gym")}
+                  className={
+                    "business-type-card" +
+                    (businessType === "gym" ? " selected" : "")
+                  }
+                >
+                  <span className="business-type-eyebrow">Fitness</span>
+                  <span className="business-type-title">Gym / Fitness</span>
+                  <span className="business-type-sub">
+                    Built around check-ins, classes, PT sessions, and reception.
+                  </span>
+                </button>
+              </div>
+
+              <div className="onboarding-field-grid">
+                <label className="onboarding-field">
+                  Business subtype
+                  <span className="field-hint">
+                    Helps choose a better set of starting roles.
+                  </span>
+                  <select
+                    value={businessSubtype}
+                    onChange={(e) => handleBusinessSubtypeChange(e.target.value)}
+                  >
+                    {subtypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="onboarding-field">
+                  Typical customer pattern
+                  <span className="field-hint">
+                    Gives the starter forecast a realistic shape.
+                  </span>
+                  <select
+                    value={customerPattern}
+                    onChange={(e) => handleCustomerPatternChange(e.target.value)}
+                  >
+                    {CUSTOMER_PATTERN_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
           )}
 
           {step === 1 && (
-            <div>
-              <h2 className="onboarding-title">Which staff roles do you use?</h2>
-              <p className="onboarding-text">
-                Start from our suggestion and add or remove roles.
-              </p>
+            <div className="onboarding-section">
+              <div className="onboarding-section-header">
+                <h2 className="onboarding-title">Opening hours</h2>
+                <p className="onboarding-text">
+                  Set the trading window Scheduloop should plan for. If
+                  weekends run differently, add one simple weekend pattern.
+                </p>
+              </div>
 
-              <ul className="roles-list">
+              <div className="hours-row">
+                <label className="hours-field">
+                  <span className="hours-label">Weekday opens</span>
+                  <select
+                    className="hours-select"
+                    value={openingHours.open}
+                    onChange={(e) =>
+                      setOpeningHours((prev) => ({
+                        ...prev,
+                        open: e.target.value,
+                      }))
+                    }
+                  >
+                    {HOURS.map((hour) => (
+                      <option key={hour} value={hour}>
+                        {hour}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="hours-field">
+                  <span className="hours-label">Weekday closes</span>
+                  <select
+                    className="hours-select"
+                    value={openingHours.close}
+                    onChange={(e) =>
+                      setOpeningHours((prev) => ({
+                        ...prev,
+                        close: e.target.value,
+                      }))
+                    }
+                  >
+                    {HOURS.map((hour) => (
+                      <option key={hour} value={hour}>
+                        {hour}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="onboarding-check">
+                <input
+                  type="checkbox"
+                  checked={openingHours.weekend.enabled}
+                  onChange={(e) =>
+                    setOpeningHours((prev) => ({
+                      ...prev,
+                      weekend: {
+                        ...prev.weekend,
+                        enabled: e.target.checked,
+                      },
+                    }))
+                  }
+                />
+                Use different weekend hours
+              </label>
+
+              {openingHours.weekend.enabled && (
+                <div className="hours-row">
+                  <label className="hours-field">
+                    <span className="hours-label">Weekend opens</span>
+                    <select
+                      className="hours-select"
+                      value={openingHours.weekend.open}
+                      onChange={(e) =>
+                        setOpeningHours((prev) => ({
+                          ...prev,
+                          weekend: {
+                            ...prev.weekend,
+                            open: e.target.value,
+                          },
+                        }))
+                      }
+                    >
+                      {HOURS.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {hour}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="hours-field">
+                    <span className="hours-label">Weekend closes</span>
+                    <select
+                      className="hours-select"
+                      value={openingHours.weekend.close}
+                      onChange={(e) =>
+                        setOpeningHours((prev) => ({
+                          ...prev,
+                          weekend: {
+                            ...prev.weekend,
+                            close: e.target.value,
+                          },
+                        }))
+                      }
+                    >
+                      {HOURS.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {hour}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {!openingHoursValid && (
+                <p className="form-error">
+                  Closing time must be later than opening time.
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="onboarding-section">
+              <div className="onboarding-section-header">
+                <h2 className="onboarding-title">Staff roles</h2>
+                <p className="onboarding-text">
+                  Confirm the roles you normally schedule. Remove anything that
+                  does not apply and add any role you want included.
+                </p>
+              </div>
+
+              <div className="onboarding-role-list">
                 {roles.map((role) => (
-                  <li key={role.id} className="role-item">
-                    <div className="role-main">
+                  <article key={role.id} className="onboarding-role-card">
+                    <div className="onboarding-role-main">
                       <span
                         className="role-color-dot"
                         style={{ backgroundColor: role.color }}
                       />
-                      <span className="role-name">{role.name}</span>
+                      <div>
+                        <strong>{role.name}</strong>
+                        <p>{role.description || "Custom staff role."}</p>
+                      </div>
                     </div>
                     <button
                       type="button"
                       className="remove-role-button"
                       onClick={() => handleRemoveRole(role.id)}
+                      aria-label={`Remove ${role.name}`}
                     >
-                      x
+                      Remove
                     </button>
-                  </li>
+                  </article>
                 ))}
-              </ul>
+              </div>
 
               <div className="add-role-section">
                 <h3 className="add-role-title">Add a role</h3>
+                <p className="onboarding-inline-help">
+                  Keep this to roles that affect staffing decisions, not every
+                  individual employee.
+                </p>
                 <div className="add-role-row">
                   <input
                     type="text"
                     placeholder={
-                      businessType === "gym" ? "e.g. Lifeguards" : "e.g. Porter"
+                      businessType === "gym" ? "e.g. Lifeguard" : "e.g. Porter"
                     }
                     value={newRoleName}
                     onChange={(e) => setNewRoleName(e.target.value)}
@@ -263,6 +637,8 @@ function OnboardingPage() {
                       }
                       style={{ backgroundColor: color }}
                       onClick={() => setNewRoleColor(color)}
+                      aria-label={`Use ${color} for the new role`}
+                      aria-pressed={newRoleColor === color}
                     />
                   ))}
                 </div>
@@ -270,168 +646,315 @@ function OnboardingPage() {
             </div>
           )}
 
-          {step === 2 && (
-            <div>
-              <h2 className="onboarding-title">What are your opening hours?</h2>
-              <p className="onboarding-text">
-                We&apos;ll only forecast within these hours.
-              </p>
-
-              <div className="hours-row">
-                <div className="hours-field">
-                  <label className="hours-label">Opens</label>
-                  <select
-                    className="hours-select"
-                    value={openingHours.open}
-                    onChange={(e) =>
-                      setOpeningHours((prev) => ({
-                        ...prev,
-                        open: e.target.value,
-                      }))
-                    }
-                  >
-                    {HOURS.map((hour) => (
-                      <option key={hour} value={hour}>
-                        {hour}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="hours-field">
-                  <label className="hours-label">Closes</label>
-                  <select
-                    className="hours-select"
-                    value={openingHours.close}
-                    onChange={(e) =>
-                      setOpeningHours((prev) => ({
-                        ...prev,
-                        close: e.target.value,
-                      }))
-                    }
-                  >
-                    {HOURS.map((hour) => (
-                      <option key={hour} value={hour}>
-                        {hour}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {!openingHoursValid && (
-                <p className="form-error">
-                  Closing time must be later than opening time.
-                </p>
-              )}
-            </div>
-          )}
-
           {step === 3 && (
-            <div>
-              <h2 className="onboarding-title">How busy is a typical day?</h2>
-              <p className="onboarding-text">
-                Once you upload CSV data, we&apos;ll use that instead.
-              </p>
-
-              <div className="busy-level-grid">
-                {[
-                  { value: "quiet", label: "Quiet" },
-                  { value: "normal", label: "Normal" },
-                  { value: "busy", label: "Busy" },
-                  { value: "veryBusy", label: "Very busy" },
-                ].map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setBusyLevel(opt.value)}
-                    className={
-                      "busy-level-card" +
-                      (busyLevel === opt.value ? " selected" : "")
-                    }
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+            <div className="onboarding-section">
+              <div className="onboarding-section-header">
+                <h2 className="onboarding-title">Staffing rules</h2>
+                <p className="onboarding-text">
+                  Set the guardrails that turn demand into useful staff numbers.
+                  These can stay rough at this stage.
+                </p>
               </div>
 
-              <div className="onboarding-summary">
-                <h3>Summary so far</h3>
-                <ul>
-                  <li>
-                    Business type:{" "}
-                    <strong>
-                      {businessType === "gym"
-                        ? "Gym / Fitness"
-                        : "Cafe / Restaurant"}
-                    </strong>
-                  </li>
-                  <li>
-                    Roles:{" "}
-                    <strong>
-                      {roles.map((role) => role.name).join(", ") || "None"}
-                    </strong>
-                  </li>
-                  <li>
-                    Hours:{" "}
-                    <strong>
-                      {openingHours.open} - {openingHours.close}
-                    </strong>
-                  </li>
-                  <li>
-                    Typical day:{" "}
-                    <strong>
-                      {busyLevel === "quiet"
-                        ? "Quiet"
-                        : busyLevel === "normal"
-                          ? "Normal"
-                          : busyLevel === "busy"
-                            ? "Busy"
-                            : "Very busy"}
-                    </strong>
-                  </li>
-                </ul>
+              <div className="onboarding-note-panel">
+                <strong>How to think about this</strong>
+                <p>
+                  Minimum cover is the fewest people you would safely run with.
+                  Peak cover is the most you usually need at your busiest point.
+                </p>
               </div>
-            </div>
-          )}
 
-          {step === 4 && (
-            <div>
-              <h2 className="onboarding-title">
-                During your busiest hour, how many of each role do you need?
-              </h2>
-              <p className="onboarding-text">
-                We&apos;ll use this to turn customer demand into staff numbers.
-              </p>
-
-              <div className="peak-staff-grid">
+              <div className="onboarding-staffing-list">
                 {roles.map((role) => (
-                  <div key={role.id} className="peak-staff-row">
-                    <div className="peak-staff-label">
-                      <span
-                        className="role-color-dot"
-                        style={{ backgroundColor: role.color }}
-                      />
-                      <span>{role.name}</span>
+                  <article key={role.id} className="onboarding-staffing-card">
+                    <div>
+                      <strong>{role.name}</strong>
+                      <p>{role.description || "Custom staff role."}</p>
                     </div>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      className="peak-staff-input"
-                      value={peakStaff[role.id] ?? 0}
-                      onChange={(e) =>
-                        handlePeakStaffChange(role.id, e.target.value)
-                      }
-                    />
-                  </div>
+
+                    <div className="onboarding-staffing-grid">
+                      <label className="onboarding-field compact">
+                        Minimum cover
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={role.minStaff ?? 0}
+                          onChange={(e) =>
+                            handleRolePatch(role.id, {
+                              minStaff: normalizeStaffCount(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+
+                      <label className="onboarding-field compact">
+                        Peak cover
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={peakStaff[role.id] ?? 0}
+                          onChange={(e) =>
+                            handlePeakStaffChange(role.id, e.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label className="onboarding-field compact">
+                        Capacity / hour
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={role.serviceRate ?? 0}
+                          onChange={(e) =>
+                            handleRolePatch(role.id, {
+                              serviceRate: normalizePositiveNumber(
+                                e.target.value,
+                                0
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+
+                      <label className="onboarding-check inline">
+                        <input
+                          type="checkbox"
+                          checked={!!role.requiredDuringOpen}
+                          onChange={(e) =>
+                            handleRolePatch(role.id, {
+                              requiredDuringOpen: e.target.checked,
+                            })
+                          }
+                        />
+                        Required while open
+                      </label>
+                    </div>
+                  </article>
                 ))}
               </div>
 
               <p className="onboarding-text small">
-                Example: at your peak, you might need 3 baristas, 2 kitchen
-                staff and 4 wait staff.
+                Capacity means roughly how many orders, visits, bookings, or
+                customers one person in this role can handle in an hour.
               </p>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="onboarding-section">
+              <div className="onboarding-section-header">
+                <h2 className="onboarding-title">Forecast accuracy setup</h2>
+                <p className="onboarding-text">
+                  Choose the broad demand pattern behind the first forecast.
+                  Historical CSV data can improve confidence later.
+                </p>
+              </div>
+
+              <div className="onboarding-choice-section">
+                <h3 className="add-role-title">When are you usually busiest?</h3>
+                <p className="onboarding-inline-help">
+                  This gently shapes the starter forecast before real trading
+                  data is uploaded.
+                </p>
+                <div className="busy-level-grid rhythm-grid">
+                  {BUSINESS_RHYTHM_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setBusinessRhythm(option.value)}
+                      className={
+                        "busy-level-card" +
+                        (businessRhythm === option.value ? " selected" : "")
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="onboarding-choice-section">
+                <h3 className="add-role-title">Typical day level</h3>
+                <p className="onboarding-inline-help">
+                  Pick the level that feels closest to an average trading day.
+                </p>
+                <div className="busy-level-grid">
+                  {[
+                    { value: "quiet", label: "Quiet" },
+                    { value: "normal", label: "Normal" },
+                    { value: "busy", label: "Busy" },
+                    { value: "veryBusy", label: "Very busy" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setBusyLevel(opt.value)}
+                      className={
+                        "busy-level-card" +
+                        (busyLevel === opt.value ? " selected" : "")
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="onboarding-demand-card">
+                <div>
+                  <h3>Optional demand estimates</h3>
+                  <p>
+                    Rough daily numbers are enough. Leave them blank if you are
+                    not sure yet.
+                  </p>
+                </div>
+
+                <label className="onboarding-field">
+                  Estimate type
+                  <select
+                    value={safeDemandEstimates.unit}
+                    onChange={(e) =>
+                      handleDemandEstimateChange("unit", e.target.value)
+                    }
+                  >
+                    {demandUnitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="onboarding-field-grid three">
+                  {[
+                    { key: "quiet", label: "Quiet day" },
+                    { key: "normal", label: "Normal day" },
+                    { key: "busy", label: "Busy day" },
+                  ].map((item) => (
+                    <label key={item.key} className="onboarding-field compact">
+                      {item.label}
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={demandEstimates[item.key] ?? ""}
+                        placeholder={demandUnitLabel}
+                        onChange={(e) =>
+                          handleDemandEstimateChange(item.key, e.target.value)
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="onboarding-section">
+              <div className="onboarding-section-header">
+                <h2 className="onboarding-title">Review profile</h2>
+                <p className="onboarding-text">
+                  Here is the operating profile Scheduloop will use to shape
+                  your first forecast.
+                </p>
+              </div>
+
+              <div className="onboarding-review-hero">
+                <span>Ready to generate</span>
+                <strong>{businessName || "My business"}</strong>
+                <p>
+                  The forecast will start from your setup and operating
+                  patterns. Uploading historical data later will improve
+                  confidence.
+                </p>
+                <div className="onboarding-review-metrics">
+                  <div>
+                    <span>Roles</span>
+                    <strong>{roles.length}</strong>
+                  </div>
+                  <div>
+                    <span>Peak cover</span>
+                    <strong>{totalPeakStaff}</strong>
+                  </div>
+                  <div>
+                    <span>CSV history</span>
+                    <strong>Not yet</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="onboarding-review-grid">
+                <section className="onboarding-review-card">
+                  <button type="button" onClick={() => setStep(0)}>
+                    Edit
+                  </button>
+                  <span>Business</span>
+                  <strong>{businessName || "My business"}</strong>
+                  <p>
+                    {getBusinessTypeLabel(businessType)} /{" "}
+                    {getSelectedLabel(subtypeOptions, businessSubtype)}
+                    {location ? ` in ${location}` : ""}
+                  </p>
+                  <p>
+                    Pattern:{" "}
+                    {getSelectedLabel(CUSTOMER_PATTERN_OPTIONS, customerPattern)}
+                  </p>
+                </section>
+
+                <section className="onboarding-review-card">
+                  <button type="button" onClick={() => setStep(1)}>
+                    Edit
+                  </button>
+                  <span>Opening hours</span>
+                  <strong>
+                    {openingHours.open} - {openingHours.close}
+                  </strong>
+                  <p>
+                    {openingHours.weekend.enabled
+                      ? `Weekend: ${openingHours.weekend.open} - ${openingHours.weekend.close}`
+                      : "Weekend hours use the same times."}
+                  </p>
+                </section>
+
+                <section className="onboarding-review-card">
+                  <button type="button" onClick={() => setStep(2)}>
+                    Edit
+                  </button>
+                  <span>Roles</span>
+                  <strong>{roles.length} roles</strong>
+                  <p>{roles.map((role) => role.name).join(", ")}</p>
+                </section>
+
+                <section className="onboarding-review-card">
+                  <button type="button" onClick={() => setStep(3)}>
+                    Edit
+                  </button>
+                  <span>Staffing</span>
+                  <strong>Peak total {totalPeakStaff}</strong>
+                  <p>
+                    Minimum cover and required-while-open settings are saved per
+                    role.
+                  </p>
+                </section>
+
+                <section className="onboarding-review-card">
+                  <button type="button" onClick={() => setStep(4)}>
+                    Edit
+                  </button>
+                  <span>Forecast start</span>
+                  <strong>
+                    {getSelectedLabel(BUSINESS_RHYTHM_OPTIONS, businessRhythm)}
+                  </strong>
+                  <p>
+                    CSV data has not been uploaded yet. Confidence starts from
+                    the saved business profile.
+                  </p>
+                </section>
+              </div>
             </div>
           )}
         </div>
@@ -439,22 +962,31 @@ function OnboardingPage() {
         {saveError && <p className="form-error">{saveError}</p>}
 
         <div className="onboarding-footer">
-          <button
-            type="button"
-            className="onboarding-nav-button secondary"
-            onClick={goBack}
-            disabled={step === 0 || isSaving}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            className="onboarding-nav-button primary"
-            onClick={goNext}
-            disabled={!canGoNext || isSaving}
-          >
-            {step === 4 ? (isSaving ? "Saving..." : "Finish and generate") : "Next"}
-          </button>
+          <p className="onboarding-footer-note">
+            You can edit these settings later from Setup View.
+          </p>
+          <div className="onboarding-footer-actions">
+            <button
+              type="button"
+              className="onboarding-nav-button secondary"
+              onClick={goBack}
+              disabled={step === 0 || isSaving}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="onboarding-nav-button primary"
+              onClick={goNext}
+              disabled={!canGoNext || isSaving}
+            >
+              {step === STEP_LABELS.length - 1
+                ? isSaving
+                  ? "Saving..."
+                  : "Generate forecast"
+                : "Continue"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
