@@ -34,12 +34,12 @@ const STEP_LABELS = [
   "Review",
 ];
 const STEP_DESCRIPTIONS = [
-  "The essentials that set the right starting assumptions.",
-  "The trading window Scheduloop should plan around.",
-  "The roles you normally schedule for this business.",
-  "The cover rules that keep the forecast practical.",
-  "The demand pattern behind the first forecast.",
-  "The profile Scheduloop will use to generate the plan.",
+  "Set the basics Scheduloop needs before the first forecast.",
+  "Choose the hours Scheduloop should plan and staff around.",
+  "Confirm the roles that shape your day-to-day cover.",
+  "Set simple guardrails for minimum and peak cover.",
+  "Add rough demand patterns so the first plan feels realistic.",
+  "Check the profile before Scheduloop builds the first plan.",
 ];
 
 function makeRoleId(name) {
@@ -74,7 +74,7 @@ function createCustomRole(name, color) {
 
 function getProfileSaveErrorMessage(error) {
   if (error?.code === "permission-denied") {
-    return "Scheduloop could not save because the database permissions need updating for this profile version.";
+    return "Scheduloop could not save because database access needs updating for this profile version.";
   }
 
   if (error?.code === "unavailable") {
@@ -288,10 +288,10 @@ function OnboardingPage() {
         <div className="onboarding-header">
           <div className="onboarding-header-copy">
             <p className="section-kicker">Scheduloop setup</p>
-            <h1>Build your operating profile</h1>
+            <h1>Build your first operating profile</h1>
             <p className="subtitle">
-              Set the hours, roles, and demand patterns Scheduloop will use for
-              your first forecast. You can refine everything later.
+              Tell us how your business usually runs. Scheduloop uses this to
+              shape your first forecast before you upload trading history.
             </p>
           </div>
 
@@ -335,8 +335,8 @@ function OnboardingPage() {
               <div className="onboarding-section-header">
                 <h2 className="onboarding-title">Business basics</h2>
                 <p className="onboarding-text">
-                  Tell Scheduloop what kind of business this is so the first
-                  forecast starts from sensible assumptions.
+                  Start with the details that make the forecast feel specific
+                  to your business, not a generic template.
                 </p>
               </div>
 
@@ -344,7 +344,7 @@ function OnboardingPage() {
                 <label className="onboarding-field">
                   Business name
                   <span className="field-hint">
-                    Shown in your saved operating profile.
+                    This appears on your saved operating profile.
                   </span>
                   <input
                     type="text"
@@ -357,7 +357,7 @@ function OnboardingPage() {
                 <label className="onboarding-field">
                   Town or city
                   <span className="field-hint">
-                    Optional, useful context for managers.
+                    Optional, but useful when managers review the plan.
                   </span>
                   <input
                     type="text"
@@ -380,7 +380,7 @@ function OnboardingPage() {
                   <span className="business-type-eyebrow">Food and drink</span>
                   <span className="business-type-title">Cafe / Restaurant</span>
                   <span className="business-type-sub">
-                    Built around orders, covers, service peaks, and floor cover.
+                    Built around orders, covers, service peaks, and floor teams.
                   </span>
                 </button>
 
@@ -404,7 +404,7 @@ function OnboardingPage() {
                 <label className="onboarding-field">
                   Business subtype
                   <span className="field-hint">
-                    Helps choose a better set of starting roles.
+                    Helps Scheduloop choose better starting roles.
                   </span>
                   <select
                     value={businessSubtype}
@@ -421,7 +421,7 @@ function OnboardingPage() {
                 <label className="onboarding-field">
                   Typical customer pattern
                   <span className="field-hint">
-                    Gives the starter forecast a realistic shape.
+                    Shapes the starter forecast before CSV history is added.
                   </span>
                   <select
                     value={customerPattern}
@@ -443,8 +443,16 @@ function OnboardingPage() {
               <div className="onboarding-section-header">
                 <h2 className="onboarding-title">Opening hours</h2>
                 <p className="onboarding-text">
-                  Set the trading window Scheduloop should plan for. If
-                  weekends run differently, add one simple weekend pattern.
+                  Set the trading window Scheduloop should forecast. If weekends
+                  run differently, add one simple weekend pattern.
+                </p>
+              </div>
+
+              <div className="onboarding-note-panel hours-help-panel">
+                <strong>Why this matters</strong>
+                <p>
+                  Opening hours decide which parts of the day appear in the
+                  staffing plan, including prep and close cover.
                 </p>
               </div>
 
@@ -570,8 +578,8 @@ function OnboardingPage() {
               <div className="onboarding-section-header">
                 <h2 className="onboarding-title">Staff roles</h2>
                 <p className="onboarding-text">
-                  Confirm the roles you normally schedule. Remove anything that
-                  does not apply and add any role you want included.
+                  Confirm the teams that affect cover decisions. Remove anything
+                  that does not apply and add any role you want included.
                 </p>
               </div>
 
@@ -603,8 +611,8 @@ function OnboardingPage() {
               <div className="add-role-section">
                 <h3 className="add-role-title">Add a role</h3>
                 <p className="onboarding-inline-help">
-                  Keep this to roles that affect staffing decisions, not every
-                  individual employee.
+                  Add roles, not employee names. You can schedule people outside
+                  Scheduloop later.
                 </p>
                 <div className="add-role-row">
                   <input
@@ -651,8 +659,8 @@ function OnboardingPage() {
               <div className="onboarding-section-header">
                 <h2 className="onboarding-title">Staffing rules</h2>
                 <p className="onboarding-text">
-                  Set the guardrails that turn demand into useful staff numbers.
-                  These can stay rough at this stage.
+                  Set the practical guardrails that turn demand into staff
+                  numbers. Rough values are fine for now.
                 </p>
               </div>
 
@@ -660,7 +668,8 @@ function OnboardingPage() {
                 <strong>How to think about this</strong>
                 <p>
                   Minimum cover is the fewest people you would safely run with.
-                  Peak cover is the most you usually need at your busiest point.
+                  Peak cover is the most you usually need when the day is at
+                  full stretch.
                 </p>
               </div>
 
@@ -703,6 +712,9 @@ function OnboardingPage() {
 
                       <label className="onboarding-field compact">
                         Capacity / hour
+                        <span className="field-hint">
+                          Roughly what one person can handle.
+                        </span>
                         <input
                           type="number"
                           min="0"
@@ -746,9 +758,9 @@ function OnboardingPage() {
           {step === 4 && (
             <div className="onboarding-section">
               <div className="onboarding-section-header">
-                <h2 className="onboarding-title">Forecast accuracy setup</h2>
+                <h2 className="onboarding-title">Starting forecast setup</h2>
                 <p className="onboarding-text">
-                  Choose the broad demand pattern behind the first forecast.
+                  Choose the broad demand pattern behind the first plan.
                   Historical CSV data can improve confidence later.
                 </p>
               </div>
@@ -807,7 +819,7 @@ function OnboardingPage() {
                 <div>
                   <h3>Optional demand estimates</h3>
                   <p>
-                    Rough daily numbers are enough. Leave them blank if you are
+                    Rough daily numbers are enough. Leave this blank if you are
                     not sure yet.
                   </p>
                 </div>
@@ -859,12 +871,12 @@ function OnboardingPage() {
                 <h2 className="onboarding-title">Review profile</h2>
                 <p className="onboarding-text">
                   Here is the operating profile Scheduloop will use to shape
-                  your first forecast.
+                  your first staffing plan.
                 </p>
               </div>
 
               <div className="onboarding-review-hero">
-                <span>Ready to generate</span>
+                <span>Ready for the first plan</span>
                 <strong>{businessName || "My business"}</strong>
                 <p>
                   The forecast will start from your setup and operating
@@ -950,8 +962,8 @@ function OnboardingPage() {
                     {getSelectedLabel(BUSINESS_RHYTHM_OPTIONS, businessRhythm)}
                   </strong>
                   <p>
-                    CSV data has not been uploaded yet. Confidence starts from
-                    the saved business profile.
+                    No CSV history yet. Confidence starts from the saved
+                    business profile and improves when trading data is added.
                   </p>
                 </section>
               </div>
@@ -959,11 +971,15 @@ function OnboardingPage() {
           )}
         </div>
 
-        {saveError && <p className="form-error">{saveError}</p>}
+        {saveError && (
+          <p className="form-error onboarding-save-error" role="alert">
+            {saveError}
+          </p>
+        )}
 
         <div className="onboarding-footer">
           <p className="onboarding-footer-note">
-            You can edit these settings later from Setup View.
+            These settings can be edited later from Setup View.
           </p>
           <div className="onboarding-footer-actions">
             <button
@@ -983,7 +999,7 @@ function OnboardingPage() {
               {step === STEP_LABELS.length - 1
                 ? isSaving
                   ? "Saving..."
-                  : "Generate forecast"
+                  : "Create first forecast"
                 : "Continue"}
             </button>
           </div>

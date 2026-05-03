@@ -21,18 +21,27 @@ export function calculateLabourCostEstimate({
 }) {
   const slotHours = getSlotHours(intervalMinutes);
   const fallbackWage = normalizeHourlyWage(averageHourlyWage);
-  const totalStaffHours =
-    chartData.reduce((sum, point) => sum + (Number(point.total) || 0), 0) *
-    slotHours;
+  const roleStaffSlots = new Map(roles.map((role) => [role.id, 0]));
+  let totalStaffSlots = 0;
   let estimatedCost = 0;
   let coveredStaffHours = 0;
   let uncoveredStaffHours = 0;
   let rolesWithWages = 0;
 
+  chartData.forEach((point) => {
+    totalStaffSlots += Number(point.total) || 0;
+    roles.forEach((role) => {
+      roleStaffSlots.set(
+        role.id,
+        (roleStaffSlots.get(role.id) || 0) + (Number(point[role.id]) || 0)
+      );
+    });
+  });
+
+  const totalStaffHours = totalStaffSlots * slotHours;
+
   roles.forEach((role) => {
-    const roleHours =
-      chartData.reduce((sum, point) => sum + (Number(point[role.id]) || 0), 0) *
-      slotHours;
+    const roleHours = (roleStaffSlots.get(role.id) || 0) * slotHours;
     const roleWage = normalizeHourlyWage(role.hourlyWage);
     const wage = roleWage ?? fallbackWage;
 

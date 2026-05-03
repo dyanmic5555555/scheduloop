@@ -152,6 +152,57 @@ export function getActiveSlotWindow(openingHours, operatingRules = {}) {
   };
 }
 
+function getCoverageSlotCount(minutes, intervalMinutes) {
+  return Math.ceil(Math.max(0, Number(minutes) || 0) / intervalMinutes);
+}
+
+export function getStaffingCoverageSlotWindow(openingHours, operatingRules = {}) {
+  const intervalMinutes = normalizeIntervalMinutes(
+    operatingRules.intervalMinutes
+  );
+
+  if (!isOpeningHoursValid(openingHours)) {
+    return {
+      slotLabels: HOURS,
+      tradingSlotLabels: HOURS,
+      prepSlots: 0,
+      closeSlots: 0,
+      intervalMinutes,
+      isValid: false,
+    };
+  }
+
+  const prepSlots = getCoverageSlotCount(
+    operatingRules.prepMinutes,
+    intervalMinutes
+  );
+  const closeSlots = getCoverageSlotCount(
+    operatingRules.closeMinutes,
+    intervalMinutes
+  );
+  const openMinutes = parseTimeToMinutes(openingHours.open);
+  const closeMinutes = parseTimeToMinutes(openingHours.close);
+  const coverageStart = openMinutes - prepSlots * intervalMinutes;
+  const coverageEnd = closeMinutes + closeSlots * intervalMinutes;
+
+  return {
+    slotLabels: generateTimeSlots(
+      formatMinutesAsTime(coverageStart),
+      formatMinutesAsTime(coverageEnd),
+      intervalMinutes
+    ),
+    tradingSlotLabels: generateTimeSlots(
+      openingHours.open,
+      openingHours.close,
+      intervalMinutes
+    ),
+    prepSlots,
+    closeSlots,
+    intervalMinutes,
+    isValid: true,
+  };
+}
+
 export function getHourIndexForSlot(slotLabel, allowedHours = HOURS) {
   const minutes = parseTimeToMinutes(slotLabel);
   const hourLabel = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:00`;

@@ -726,7 +726,14 @@ html, body, #root {
   font-size: 0.75rem;
   font-weight: 500;
   color: #9ca3af; /* slate-400 */
+  margin-bottom: 3px;
+}
+
+.sod-tooltip-phase {
   margin-bottom: 6px;
+  color: #f9fafb;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .sod-tooltip-body {
@@ -3757,5 +3764,480 @@ html, body, #root {
 
   .forecast-feedback-actions {
     justify-content: flex-start;
+  }
+}
+
+/* ONBOARDING DASHBOARD UI POLISH */
+
+.onboarding-screen {
+  padding: 28px 20px 40px;
+}
+
+.onboarding-card-wide {
+  max-width: 1040px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(79, 140, 255, 0.1), transparent 230px),
+    rgba(9, 14, 28, 0.98);
+}
+
+.onboarding-header {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 30px;
+  padding: 32px 34px 24px;
+}
+
+.onboarding-header h1 {
+  max-width: 720px;
+  font-size: clamp(30px, 3.6vw, 40px);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.onboarding-header .subtitle {
+  max-width: 680px;
+  font-size: 15px;
+}
+
+.onboarding-header-panel {
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent),
+    rgba(15, 23, 42, 0.48);
+}
+
+.onboarding-steps {
+  padding: 18px 34px 0;
+}
+
+.onboarding-step {
+  border: 1px solid transparent;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.onboarding-step.done {
+  color: rgba(245, 247, 255, 0.82);
+}
+
+.onboarding-step.active {
+  border-color: rgba(147, 197, 253, 0.22);
+}
+
+.onboarding-body {
+  padding: 28px 34px 6px;
+}
+
+.onboarding-section {
+  gap: 20px;
+}
+
+.onboarding-section-header {
+  max-width: 760px;
+}
+
+.onboarding-title {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.onboarding-field,
+.hours-field,
+.accuracy-field,
+.staff-role-peak-label {
+  letter-spacing: 0;
+}
+
+.onboarding-field input,
+.onboarding-field select,
+.hours-select,
+.add-role-input,
+.staff-add-input,
+.staff-add-peak-input,
+.staff-role-peak-input,
+.accuracy-field input,
+.accuracy-field select,
+.forecast-feedback-controls select,
+.forecast-feedback-controls input,
+.calendar-weather-fields select,
+.calendar-weather-fields input[type="number"],
+.calendar-note-input {
+  border-radius: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.onboarding-field input:focus-visible,
+.onboarding-field select:focus-visible,
+.hours-select:focus-visible,
+.add-role-input:focus-visible,
+.staff-add-input:focus-visible,
+.staff-add-peak-input:focus-visible,
+.staff-role-peak-input:focus-visible,
+.staff-role-name-input:focus-visible,
+.accuracy-field input:focus-visible,
+.accuracy-field select:focus-visible,
+.calendar-note-input:focus-visible,
+.calendar-weather-fields select:focus-visible,
+.calendar-weather-fields input[type="number"]:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.16);
+}
+
+.business-type-card,
+.onboarding-choice-section,
+.onboarding-role-card,
+.onboarding-staffing-card,
+.onboarding-demand-card,
+.onboarding-note-panel,
+.onboarding-review-card {
+  border-radius: 16px;
+}
+
+.business-type-card {
+  min-height: 142px;
+  padding: 18px;
+}
+
+.business-type-card:focus-visible,
+.busy-level-card:focus-visible,
+.remove-role-button:focus-visible,
+.add-role-button:focus-visible,
+.onboarding-nav-button:focus-visible,
+.color-swatch:focus-visible,
+.staff-color-swatch:focus-visible,
+.staff-add-button:focus-visible,
+.staff-role-remove:focus-visible,
+.calendar-nav-btn:focus-visible,
+.calendar-day:focus-visible,
+.daytype-pill:focus-visible,
+.forecast-feedback-actions button:focus-visible,
+.route-error-button:focus-visible,
+.auth-link-button:focus-visible,
+.sample-csv-link:focus-visible {
+  outline: 2px solid rgba(147, 197, 253, 0.7);
+  outline-offset: 2px;
+}
+
+.add-role-title {
+  margin-bottom: 6px;
+  color: var(--text-main);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.hours-help-panel {
+  margin-top: -2px;
+}
+
+.hours-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.onboarding-staffing-grid {
+  align-items: start;
+}
+
+.onboarding-demand-card {
+  gap: 16px;
+}
+
+.onboarding-review-hero {
+  padding: 20px;
+  border-radius: 18px;
+}
+
+.onboarding-review-grid {
+  gap: 14px;
+}
+
+.onboarding-review-card {
+  min-height: 128px;
+  padding: 18px;
+}
+
+.onboarding-review-card strong {
+  display: block;
+  padding-right: 64px;
+  font-size: 16px;
+}
+
+.onboarding-save-error {
+  margin: 14px 34px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.22);
+}
+
+.onboarding-footer {
+  padding: 18px 34px 30px;
+}
+
+.planner-recommendation-panel,
+.planner-metric-card,
+.shape-card,
+.calendar-panel,
+.rota-guidance-panel,
+.forecast-feedback-panel,
+.forecast-accuracy-note,
+.context-adjustment-note,
+.setup-inline-status,
+.csv-guidance {
+  border-radius: 16px;
+}
+
+.planner-recommendation-panel {
+  background:
+    linear-gradient(135deg, rgba(79, 140, 255, 0.24), rgba(15, 23, 42, 0.14)),
+    linear-gradient(180deg, rgba(13, 19, 36, 0.98), rgba(9, 14, 27, 0.98));
+}
+
+.planner-recommendation-copy h3 {
+  letter-spacing: 0;
+}
+
+.planner-metric-card {
+  overflow: hidden;
+}
+
+.planner-metric-card::before {
+  width: 4px;
+}
+
+.rota-guidance-panel {
+  padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(79, 140, 255, 0.08), transparent 160px),
+    #0d1324;
+}
+
+.rota-guidance-summary {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(8, 13, 26, 0.32);
+  border: 1px solid rgba(101, 124, 166, 0.18);
+}
+
+.rota-guidance-badge,
+.forecast-feedback-badge,
+.shape-chart-badge,
+.planner-recommendation-label {
+  letter-spacing: 0.02em;
+}
+
+.forecast-feedback-panel {
+  gap: 16px;
+  background:
+    linear-gradient(135deg, rgba(79, 140, 255, 0.1), rgba(59, 214, 139, 0.04)),
+    rgba(13, 19, 36, 0.9);
+}
+
+.forecast-feedback-field span,
+.calendar-note-field span,
+.accuracy-field-label {
+  color: var(--text-main);
+  font-weight: 800;
+}
+
+.forecast-feedback-actions button {
+  min-width: 112px;
+}
+
+.calendar-helper,
+.calendar-guidance,
+.calendar-section-heading p {
+  line-height: 1.45;
+}
+
+.calendar-context-grid {
+  gap: 7px 10px;
+}
+
+.context-toggle {
+  min-height: 28px;
+  color: var(--text-muted);
+}
+
+.context-toggle:hover {
+  color: var(--text-main);
+}
+
+.calendar-note-field {
+  padding-top: 2px;
+}
+
+.accuracy-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.accuracy-field {
+  gap: 6px;
+}
+
+.accuracy-field small {
+  min-height: 30px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.staff-role-controls {
+  grid-template-columns: repeat(3, minmax(108px, 1fr));
+  gap: 11px;
+}
+
+.staff-role-check {
+  justify-content: flex-start;
+}
+
+.staff-role-color-picker {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.staff-role-remove {
+  width: auto;
+  min-width: 72px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.staff-empty-text,
+.upload-info,
+.mvp-limits-list {
+  line-height: 1.45;
+}
+
+.theme-root[data-theme="light"] .onboarding-card-wide {
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.08), transparent 230px),
+    #ffffff;
+}
+
+.theme-root[data-theme="light"] .onboarding-header-panel,
+.theme-root[data-theme="light"] .rota-guidance-summary {
+  background: #f6f9ff;
+  border-color: #d8e4f3;
+}
+
+.theme-root[data-theme="light"] .onboarding-step.done {
+  color: #334155;
+}
+
+.theme-root[data-theme="light"] .rota-guidance-panel,
+.theme-root[data-theme="light"] .forecast-feedback-panel {
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.06), transparent 150px),
+    #ffffff;
+}
+
+.theme-root[data-theme="light"] .onboarding-save-error {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+@media (max-width: 980px) {
+  .onboarding-header {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .onboarding-header-panel {
+    max-width: 100%;
+  }
+
+  .onboarding-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .rhythm-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .onboarding-screen {
+    padding: 16px 12px 28px;
+  }
+
+  .onboarding-header,
+  .onboarding-body,
+  .onboarding-footer {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .onboarding-header h1 {
+    font-size: 30px;
+  }
+
+  .onboarding-steps {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 14px 18px 2px;
+  }
+
+  .onboarding-step {
+    flex: 0 0 auto;
+    min-width: 120px;
+  }
+
+  .business-type-grid,
+  .onboarding-field-grid,
+  .onboarding-field-grid.three,
+  .onboarding-review-grid,
+  .onboarding-review-metrics,
+  .busy-level-grid,
+  .rhythm-grid,
+  .onboarding-staffing-grid,
+  .hours-row,
+  .accuracy-grid,
+  .staff-role-controls,
+  .forecast-feedback-controls,
+  .rota-guidance-grid,
+  .rota-guidance-list {
+    grid-template-columns: 1fr;
+  }
+
+  .business-type-card {
+    min-height: auto;
+  }
+
+  .onboarding-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .onboarding-footer-actions {
+    width: 100%;
+  }
+
+  .onboarding-nav-button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .onboarding-save-error {
+    margin-left: 18px;
+    margin-right: 18px;
+  }
+
+  .planner-recommendation-copy h3 {
+    font-size: 26px;
+  }
+
+  .forecast-feedback-actions button {
+    flex: 1 1 100%;
   }
 }

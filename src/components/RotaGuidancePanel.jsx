@@ -5,13 +5,13 @@ function RotaGuidancePanel({ guidance }) {
     <section className="card rota-guidance-panel" aria-label="Rota guidance">
       <div className="rota-guidance-header">
         <div>
-          <h2 className="card-title">Rota Guidance</h2>
+          <h2 className="card-title">Rota guidance</h2>
           <p className="card-subtitle">
-            Practical actions generated from the staffing forecast. This is not
-            rota publishing yet.
+            Planning prompts based on the forecast. This is guidance only, not
+            rota publishing.
           </p>
         </div>
-        <span className="rota-guidance-badge">Manager actions</span>
+        <span className="rota-guidance-badge">Forecast-based</span>
       </div>
 
       <p className="rota-guidance-summary">{guidance.summary}</p>
@@ -20,12 +20,12 @@ function RotaGuidancePanel({ guidance }) {
         <div className="rota-guidance-callout">
           <span>Strongest cover</span>
           <strong>{guidance.strongestCoverLabel}</strong>
-          <p>Schedule your most reliable cover around this window.</p>
+          <p>Plan your most reliable cover around this window.</p>
         </div>
         <div className="rota-guidance-callout">
           <span>Quieter cover</span>
           <strong>{guidance.quietCoverLabel}</strong>
-          <p>Use this as the first place to keep staffing closer to minimum.</p>
+          <p>This is the first place to keep staffing closer to minimum.</p>
         </div>
       </div>
 
@@ -39,7 +39,7 @@ function RotaGuidancePanel({ guidance }) {
 
       {guidance.warnings.length > 0 && (
         <div className="rota-guidance-warning">
-          <strong>Peak warnings</strong>
+          <strong>Demand spikes to review</strong>
           <ul>
             {guidance.warnings.map((item) => (
               <li key={item}>{item}</li>

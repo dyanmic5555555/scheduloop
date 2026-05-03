@@ -83,10 +83,10 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
 
   return (
     <div className="card staff-panel">
-      <h2 className="card-title">Staff breakdown</h2>
+      <h2 className="card-title">Role setup</h2>
       <p className="card-subtitle">
-        Tell Scheduloop which roles you need and how many people you usually
-        need at your busiest time.
+        Keep the roles, cover levels, and optional wage estimates aligned with
+        how the business actually runs.
       </p>
 
       <div className="staff-role-list">
@@ -114,14 +114,14 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                 onClick={() => handleRemoveRole(role.id)}
                 aria-label={`Remove ${role.name}`}
               >
-                x
+                Remove
               </button>
             </div>
 
             <div className="staff-role-controls">
               <div className="staff-role-peak">
                 <label className="staff-role-peak-label">
-                  Max at peak
+                  Peak cover
                   <input
                     type="number"
                     min="0"
@@ -137,7 +137,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
               </div>
 
               <label className="staff-role-peak-label">
-                Units / hour
+                Capacity/hr
                 <input
                   type="number"
                   min="0"
@@ -154,7 +154,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
               </label>
 
               <label className="staff-role-peak-label">
-                Min
+                Min cover
                 <input
                   type="number"
                   min="0"
@@ -171,7 +171,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
               </label>
 
               <label className="staff-role-peak-label">
-                Share %
+                Demand share %
                 <input
                   type="number"
                   min="0"
@@ -189,7 +189,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
               </label>
 
               <label className="staff-role-peak-label">
-                Wage / hr
+                Wage/hr
                 <input
                   type="number"
                   min="0"
@@ -215,7 +215,7 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
                     })
                   }
                 />
-                Always cover
+                Cover while open
               </label>
 
               <div className="staff-role-color-picker">
@@ -305,8 +305,8 @@ function StaffBreakdownPanel({ roles, peakStaff, onStaffingChange }) {
         </div>
 
         <p className="staff-add-hint">
-          We&apos;ll use the max staff number to scale this role up and down
-          based on how busy each hour is.
+          Scheduloop uses peak cover to scale this role up and down across the
+          day.
         </p>
       </div>
     </div>

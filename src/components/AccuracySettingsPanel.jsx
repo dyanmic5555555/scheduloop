@@ -19,16 +19,17 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
     <div className="card accuracy-panel">
       <details className="advanced-settings">
         <summary>
-          <span>Advanced accuracy settings</span>
+          <span>Forecast tuning</span>
           <small>
-            Most businesses can leave these as they are. Fine tune them when you
-            know the forecast needs to be more cautious.
+            Most businesses can leave this alone. Use these settings when you
+            want the plan to be more cautious.
           </small>
         </summary>
 
         <div className="accuracy-grid">
           <label className="accuracy-field">
-            Block size
+            <span className="accuracy-field-label">Block size</span>
+            <small>Smaller blocks show more detail.</small>
             <select
               value={rules.intervalMinutes}
               onChange={(e) =>
@@ -42,7 +43,8 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
           </label>
 
           <label className="accuracy-field">
-            Demand buffer %
+            <span className="accuracy-field-label">Demand buffer %</span>
+            <small>Add a small cushion above forecast demand.</small>
             <input
               type="number"
               min="0"
@@ -60,7 +62,8 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
           </label>
 
           <label className="accuracy-field">
-            Break allowance %
+            <span className="accuracy-field-label">Break allowance %</span>
+            <small>Allow extra cover for breaks.</small>
             <input
               type="number"
               min="0"
@@ -78,7 +81,8 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
           </label>
 
           <label className="accuracy-field">
-            Min total staff
+            <span className="accuracy-field-label">Minimum total staff</span>
+            <small>Keep at least this many people on.</small>
             <input
               type="number"
               min="0"
@@ -93,7 +97,8 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
           </label>
 
           <label className="accuracy-field">
-            Average hourly wage (£)
+            <span className="accuracy-field-label">Average hourly wage</span>
+            <small>Optional estimate, not payroll.</small>
             <input
               type="number"
               min="0"
@@ -109,7 +114,8 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
           </label>
 
           <label className="accuracy-field">
-            Prep minutes
+            <span className="accuracy-field-label">Opening prep</span>
+            <small>Cover before trading starts.</small>
             <input
               type="number"
               min="0"
@@ -124,7 +130,8 @@ function AccuracySettingsPanel({ operatingRules, onOperatingRulesChange }) {
           </label>
 
           <label className="accuracy-field">
-            Close minutes
+            <span className="accuracy-field-label">Closing cover</span>
+            <small>Cover after the final trading block.</small>
             <input
               type="number"
               min="0"

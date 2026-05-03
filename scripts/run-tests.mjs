@@ -3,6 +3,8 @@ import {
   getActiveHourWindow,
   generateTimeSlots,
   getActiveSlotWindow,
+  getCoverageWindowFlags,
+  getStaffingCoverageSlotWindow,
   getWeekdayFromDateKey,
   HOURS,
   isOpeningHoursValid,
@@ -114,6 +116,76 @@ test("active slot window supports 30 minute blocks", () => {
   );
   assert.deepEqual(window.slotLabels, ["09:00", "09:30"]);
   assert.equal(window.intervalMinutes, 30);
+});
+
+test("active slot window stays trading-hours only with prep and close cover", () => {
+  const window = getActiveSlotWindow(
+    { open: "09:00", close: "14:00" },
+    { intervalMinutes: 30, prepMinutes: 30, closeMinutes: 30 }
+  );
+
+  assert.deepEqual(window.slotLabels, [
+    "09:00",
+    "09:30",
+    "10:00",
+    "10:30",
+    "11:00",
+    "11:30",
+    "12:00",
+    "12:30",
+    "13:00",
+    "13:30",
+  ]);
+});
+
+test("staffing coverage window includes prep and clean-up slots", () => {
+  const window = getStaffingCoverageSlotWindow(
+    { open: "09:00", close: "14:00" },
+    { intervalMinutes: 30, prepMinutes: 30, closeMinutes: 30 }
+  );
+
+  assert.deepEqual(window.slotLabels, [
+    "08:30",
+    "09:00",
+    "09:30",
+    "10:00",
+    "10:30",
+    "11:00",
+    "11:30",
+    "12:00",
+    "12:30",
+    "13:00",
+    "13:30",
+    "14:00",
+  ]);
+  assert.deepEqual(window.tradingSlotLabels, [
+    "09:00",
+    "09:30",
+    "10:00",
+    "10:30",
+    "11:00",
+    "11:30",
+    "12:00",
+    "12:30",
+    "13:00",
+    "13:30",
+  ]);
+  assert.deepEqual(
+    getCoverageWindowFlags(0, window.slotLabels.length, {
+      intervalMinutes: 30,
+      prepMinutes: 30,
+      closeMinutes: 30,
+    }),
+    { isPrepWindow: true, isCloseWindow: false }
+  );
+  assert.deepEqual(
+    getCoverageWindowFlags(window.slotLabels.length - 1, window.slotLabels.length, {
+      intervalMinutes: 30,
+      prepMinutes: 30,
+      closeMinutes: 30,
+    }),
+    { isPrepWindow: false, isCloseWindow: true }
+  );
 });
 
 test("time slot generation supports 15 minute blocks", () => {

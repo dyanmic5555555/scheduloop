@@ -15,10 +15,18 @@ const ShapeOfDayTooltip = ({ active, payload, label, roleNames }) => {
   if (!active || !payload || payload.length === 0) return null;
 
   const totalPoint = payload.find((p) => p.dataKey === "total");
+  const coveragePhase = payload[0]?.payload?.coveragePhase;
+  const phaseLabel =
+    coveragePhase === "prep"
+      ? "Prep cover"
+      : coveragePhase === "close"
+      ? "Clean-up cover"
+      : "Trading cover";
 
   return (
     <div className="sod-tooltip">
       <div className="sod-tooltip-header">{label}</div>
+      <div className="sod-tooltip-phase">{phaseLabel}</div>
 
       <div className="sod-tooltip-body">
         {payload
@@ -70,8 +78,8 @@ function ShapeOfDayChart({ roles, data }) {
         <div>
           <h2 className="card-title">Shape of the day</h2>
           <p className="shape-card-subtitle">
-            Staffing need across the day. The blue line is total people needed;
-            role lines show where each team is busiest.
+            Staffing need across the coverage day. Prep and clean-up slots are
+            included when configured; demand still comes from trading hours.
           </p>
         </div>
         <div className="shape-chart-badge">Staffing need</div>
@@ -146,7 +154,7 @@ function ShapeOfDayChart({ roles, data }) {
         </ResponsiveContainer>
       </div>
       <p className="shape-chart-note">
-        Use this curve to spot when to schedule more people.
+        Use this curve as the starting point for cover decisions.
       </p>
     </div>
   );

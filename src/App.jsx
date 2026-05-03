@@ -17,7 +17,7 @@ function RouteError({ message }) {
   return (
     <div className="app route-error-screen">
       <div className="route-error-card">
-        <h1>Something went wrong</h1>
+        <h1>We could not load your profile</h1>
         <p>{message}</p>
         <button
           type="button"

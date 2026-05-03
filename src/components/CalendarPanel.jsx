@@ -130,7 +130,7 @@ function CalendarPanel({
         <div>
           <h2 className="card-title">Plan by day</h2>
           <p className="calendar-helper">
-            Adjust day types when you expect unusual demand.
+            Set the overall demand level, then add context for unusual days.
           </p>
         </div>
       </div>
@@ -235,8 +235,8 @@ function CalendarPanel({
             })}
           </div>
           <p className="calendar-guidance">
-            Use demand level for the overall day. Use context factors to explain
-            why demand may change.
+            Use demand level for the size of the day. Use context factors to
+            explain why it may be different.
           </p>
         </div>
 

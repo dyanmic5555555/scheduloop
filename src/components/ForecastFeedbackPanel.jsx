@@ -3,7 +3,7 @@ import { TOTAL_FEEDBACK_ROLE_ID } from "../utils/staffingFeedback";
 
 const FEEDBACK_BUTTONS = [
   { value: "overstaffed", label: "Overstaffed" },
-  { value: "right", label: "Right" },
+  { value: "right", label: "About right" },
   { value: "understaffed", label: "Understaffed" },
 ];
 
@@ -60,11 +60,11 @@ function ForecastFeedbackPanel({
         <div>
           <h3>Forecast review</h3>
           <p>
-            After a shift, mark one hour as overstaffed, right, or understaffed
-            so future similar days can adjust gently.
+            After a shift, record whether one hour felt high, right, or low.
+            Scheduloop uses this gently on similar days.
           </p>
         </div>
-        <span className="forecast-feedback-badge">Learns gently</span>
+        <span className="forecast-feedback-badge">Manager feedback</span>
       </div>
 
       <div className="forecast-feedback-controls">
@@ -83,7 +83,7 @@ function ForecastFeedbackPanel({
         </label>
 
         <label className="forecast-feedback-field">
-          <span>Area</span>
+          <span>Staff area</span>
           <select
             value={safeSelectedRoleId}
             onChange={(event) => setSelectedRoleId(event.target.value)}

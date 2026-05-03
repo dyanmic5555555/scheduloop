@@ -15,9 +15,9 @@ import {
   normalizeRolesForAccuracy,
 } from "../config/businessPresets";
 import {
-  getActiveSlotWindow,
   getCoverageWindowFlags,
   getHourIndexForSlot,
+  getStaffingCoverageSlotWindow,
   getWeekdayFromDateKey,
   holidayDateKey,
   HOURS,
@@ -409,43 +409,52 @@ function DashboardPage() {
     const weekdaySampleCount =
       csvCurves?.weekdaySampleCounts?.[selectedWeekday] || 0;
     const observedDays = csvCurves?.observedDays || 0;
-    const { slotLabels, intervalMinutes } = getActiveSlotWindow(
-      openingHours,
-      operatingRules
+    const { slotLabels, tradingSlotLabels, intervalMinutes } =
+      getStaffingCoverageSlotWindow(
+        openingHours,
+        operatingRules
+      );
+    const tradingSlotSet = new Set(tradingSlotLabels);
+    const csvSlotIndexByLabel = new Map(
+      (csvCurves?.slotLabels || []).map((label, index) => [label, index])
     );
+    const weekdayCurve = csvCurves?.byWeekday?.[selectedWeekday] || null;
+    const weekdayUnits = csvCurves?.byWeekdayUnits?.[selectedWeekday] || null;
+    const hasWeekdayData =
+      weekdaySampleCount > 0 &&
+      weekdayCurve &&
+      weekdayCurve.some((value) => (value || 0) > 0);
+    const csvWeight = getCsvBlendWeight({
+      hasCsv,
+      hasWeekdayData,
+      weekdaySampleCount,
+      observedDays,
+      totalRows: csvCurves?.rows || 0,
+    });
 
     return slotLabels.map((slotLabel, slotIndex) => {
       const absoluteIndex = getHourIndexForSlot(slotLabel);
       const point = { hour: slotLabel };
-      const preset = presetShape[absoluteIndex] ?? 0;
-      const csvSlotIndex = csvCurves?.slotLabels?.indexOf(slotLabel) ?? -1;
-      const weekdayCurve = csvCurves?.byWeekday?.[selectedWeekday] || null;
-      const weekdayUnits = csvCurves?.byWeekdayUnits?.[selectedWeekday] || null;
-      const hasWeekdayData =
-        weekdaySampleCount > 0 &&
-        weekdayCurve &&
-        weekdayCurve.some((value) => (value || 0) > 0);
-      const csvWeight = getCsvBlendWeight({
-        hasCsv,
-        hasWeekdayData,
-        weekdaySampleCount,
-        observedDays,
-        totalRows: csvCurves?.rows || 0,
-      });
+      const isTradingSlot = tradingSlotSet.has(slotLabel);
+      const preset = isTradingSlot ? presetShape[absoluteIndex] ?? 0 : 0;
+      const csvSlotIndex =
+        isTradingSlot && csvCurves?.slotLabels
+          ? csvSlotIndexByLabel.get(slotLabel) ?? -1
+          : -1;
       const csvDemand =
-        hasCsv && csvSlotIndex !== -1
+        isTradingSlot && hasCsv && csvSlotIndex !== -1
           ? (hasWeekdayData
               ? weekdayCurve?.[csvSlotIndex]
               : csvCurves?.fallback?.[csvSlotIndex]) ?? 0
           : null;
       const demandUnits =
-        hasCsv && csvSlotIndex !== -1
+        isTradingSlot && hasCsv && csvSlotIndex !== -1
           ? (hasWeekdayData
               ? weekdayUnits?.[csvSlotIndex]
               : csvCurves?.fallbackUnits?.[csvSlotIndex]) ?? null
           : null;
       const baseDemand =
-        csvDemand !== null
+        isTradingSlot && csvDemand !== null
           ? csvWeight * csvDemand + (1 - csvWeight) * preset
           : preset;
       const demand = Math.min(
@@ -456,9 +465,6 @@ function DashboardPage() {
         demandUnits !== null
           ? Math.max(0, demandUnits * activeContextMultiplier)
           : demandUnits;
-      point.demandScore = demand;
-      point.demandUnits = adjustedDemandUnits;
-      point.contextMultiplier = activeContextMultiplier;
       const coverageFlags = getCoverageWindowFlags(
         slotIndex,
         slotLabels.length,
@@ -466,6 +472,14 @@ function DashboardPage() {
       );
       const forceMinimum =
         coverageFlags.isPrepWindow || coverageFlags.isCloseWindow;
+      point.demandScore = demand;
+      point.demandUnits = adjustedDemandUnits;
+      point.contextMultiplier = activeContextMultiplier;
+      point.coveragePhase = coverageFlags.isPrepWindow
+        ? "prep"
+        : coverageFlags.isCloseWindow
+        ? "close"
+        : "trading";
 
       let total = 0;
       roles.forEach((role) => {
@@ -648,7 +662,7 @@ function DashboardPage() {
   const staffHoursLabel = formatStaffHours(totalStaffHours);
   const labourCostLabel = labourCostEstimate.hasWage
     ? formatCurrencyGBP(labourCostEstimate.estimatedCost)
-    : "Not set";
+    : "Add wage";
   const labourCostDetail = getLabourCostDetail(labourCostEstimate);
   const forecastBasis = hasCsv
     ? `Uploaded ${csvCurves.rows.toLocaleString()} rows across ${
@@ -656,7 +670,7 @@ function DashboardPage() {
       } observed days${
         hasRoleSpecificDemand ? ", including role-specific demand." : "."
       }`
-    : "Your first forecast is based on your business setup and operating patterns. Uploading historical data later will improve forecast confidence.";
+    : "No trading history uploaded yet. This forecast is based on your business setup and operating patterns.";
 
   const handleDayConfigChange = (date, partialConfig) => {
     const nextConfig = {
@@ -750,7 +764,10 @@ function DashboardPage() {
       <header className="app-header">
         <div>
           <h1>Scheduloop</h1>
-          <p className="subtitle">Today&apos;s staffing plan, built for the way your day changes.</p>
+          <p className="subtitle">
+            A daily staffing plan shaped around demand, roles, and local
+            context.
+          </p>
 
           <p className="business-type-label">
             Profile for: <strong>{getBusinessTypeLabel(businessType)}</strong>
@@ -811,8 +828,8 @@ function DashboardPage() {
               <h2>Today&apos;s staffing plan</h2>
               <p>
                 {selectedDateLabel} is set as a{" "}
-                {getDayTypeLabel(dayType).toLowerCase()}. Forecasts improve as
-                more history is added.
+                {getDayTypeLabel(dayType).toLowerCase()}. Use this as guidance,
+                then add the business context only you know.
               </p>
             </div>
           </section>
@@ -826,9 +843,8 @@ function DashboardPage() {
                 Plan for {staffHoursLabel} staff hours today.
               </h3>
               <p>
-                Heaviest cover is expected around {peakHoursLabel}. Use this as
-                a rota starting point, then adjust for local context you know
-                about.
+                Strongest cover is expected around {peakHoursLabel}. Use this as
+                the rota starting point, then adjust for real-world details.
               </p>
             </div>
             <div className="planner-recommendation-stats">
@@ -907,7 +923,7 @@ function DashboardPage() {
                   {forecastBacktest?.status === "ready"
                     ? forecastBacktest.summary
                     : forecastBacktest?.summary ||
-                      "Backtesting will appear after enough CSV history is uploaded."}
+                      "Backtesting appears after enough CSV history is uploaded."}
                 </span>
               </div>
               <ForecastFeedbackPanel
@@ -935,8 +951,8 @@ function DashboardPage() {
             <p className="section-kicker">Setup View</p>
             <h2>Business setup</h2>
             <p>
-              Keep the profile, data upload, and role assumptions up to date so
-              the planner stays useful.
+              Keep the profile, trading data, and role assumptions current so
+              each plan starts from the right baseline.
             </p>
           </section>
 
@@ -944,7 +960,7 @@ function DashboardPage() {
             <div className="setup-left">
               <InfoCard
                 title="Business profile"
-                subtitle="These basics decide the starter forecast before you upload data."
+                subtitle="These settings shape the starter forecast before CSV history is added."
                 className="setup-card"
               >
                 <label className="setup-field">
@@ -965,18 +981,19 @@ function DashboardPage() {
 
               <InfoCard
                 title="Data upload"
-                subtitle="Upload trading data to replace the starter estimate with your real pattern."
+                subtitle="Upload trading history when you are ready to improve forecast confidence."
                 className="setup-card"
               >
                 <div className="csv-guidance" id="csv-upload-guidance">
                   <p>
-                    CSV needs a timestamp, time, date, or datetime column. Good
-                    demand columns include orders, sales, customers, bookings,
-                    check-ins, covers, appointments, or similar counts.
+                    CSV files need a timestamp, time, date, or datetime column.
+                    Demand columns can include orders, sales, customers,
+                    bookings, check-ins, covers, appointments, or similar
+                    counts.
                   </p>
                   <p>
                     Add an actual staff column, such as staff_count or
-                    scheduled_staff, to improve backtesting.
+                    scheduled_staff, when you want stronger backtesting.
                   </p>
                   <a
                     href="/sample-data/scheduloop-sample-demand.csv"
@@ -1022,8 +1039,8 @@ function DashboardPage() {
                 )}
                 {!uploadInfo && !uploadError && (
                   <p className="upload-info">
-                    No CSV uploaded yet. The planner is using your business
-                    setup and operating patterns until you add trading history.
+                    No trading history uploaded yet. The planner is using your
+                    business setup and typical demand pattern.
                   </p>
                 )}
 
@@ -1036,7 +1053,7 @@ function DashboardPage() {
                       ? `Average difference: ${backtestSummary.meanAbsoluteError.toFixed(
                           1
                         )} staff per block.`
-                      : "Upload staff counts to compare the forecast with past rotas."}
+                      : "Upload staff counts to compare the forecast with past staffing levels."}
                   </p>
                 </div>
               </InfoCard>
@@ -1048,13 +1065,13 @@ function DashboardPage() {
 
               <InfoCard
                 title="Current MVP limits"
-                subtitle="A quick reminder of what Scheduloop can and cannot do yet."
+                subtitle="What this version handles today, and what still needs manager judgement."
                 className="setup-card"
               >
                 <ul className="mvp-limits-list">
-                  <li>Forecasts are guidance, not guaranteed answers.</li>
+                  <li>Forecasts are planning guidance, not guaranteed answers.</li>
                   <li>Better CSV history improves confidence over time.</li>
-                  <li>Manual context tags are available, but no external weather, events, or roadworks APIs are connected on this branch.</li>
+                  <li>Manual context tags are available, but external weather, events, and roadworks APIs are not connected yet.</li>
                   <li>Rota publishing and payroll are not included yet.</li>
                 </ul>
               </InfoCard>
